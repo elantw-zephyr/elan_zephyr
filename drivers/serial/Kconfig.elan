@@ -1,0 +1,11 @@
+# Copyright (c) 2025 Elan Microelectronics Corp..
+# SPDX-License-Identifier: Apache-2.0
+
+config UART_ELAN_ELANDEV
+	bool "ELAN 967 serial driver"
+	default y
+	depends on DT_HAS_ELAN_ELANDEV_UART_ENABLED
+	select SERIAL_HAS_DRIVER
+	help
+	  This option enables the elan 967 serial driver.
+

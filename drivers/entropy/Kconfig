@@ -1,0 +1,4 @@
+# EM32 TRNG entropy driver Kconfig root
+# SPDX-License-Identifier: Apache-2.0
+
+rsource "Kconfig.elan"

@@ -1,0 +1,11 @@
+# Copyright (c) 2025 Elan Microelectronics Corp.
+#
+# SPDX-License-Identifier: Apache-2.0
+
+config HWINFO_EM32
+	bool "Elan EM32 hwinfo"
+	default y
+	depends on SOC_EM32F967
+	select HWINFO_HAS_DRIVER
+	help
+	  Enable Elan EM32 hwinfo driver.

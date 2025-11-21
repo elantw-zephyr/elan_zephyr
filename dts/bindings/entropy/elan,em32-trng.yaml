@@ -1,0 +1,24 @@
+# SPDX-License-Identifier: Apache-2.0
+# Devicetree binding for EM32F967 TRNG
+
+description: EM32F967 True Random Number Generator providing hardware entropy source
+
+compatible: "elan,em32-trng"
+
+include: base.yaml
+
+properties:
+  reg:
+    description: TRNG register base address and size
+    required: true
+  clocks:
+    description: Optional APB clock provider
+  interrupts:
+    description: Optional interrupt spec (IRQ and priority)
+  sample-rate:
+    type: int
+    description: Raw entropy sampling divider (hardware dependent / TBD)
+  health-test-disable:
+    type: boolean
+    description: Disable runtime health tests (diagnostics only; reduces security)
+

@@ -1,0 +1,12 @@
+config SPI_ELAN_ELANDEV
+	bool "Elan e967 SPI driver"
+	default y
+
+if SPI_ELAN_ELANDEV
+config SPI_ELAN_ELANDEV_INTERRUPT
+	bool "Elan e967 SPI Interrupt Support"
+	default n
+	help
+	  Enable Interrupt support for SPI communication.
+
+endif

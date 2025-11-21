@@ -1,0 +1,11 @@
+# Clock controller driver configuration options
+
+# Copyright (c) 2025 Elan Microelectronics Corp.
+#
+# SPDX-License-Identifier: Apache-2.0
+
+#
+# Clock controller drivers
+#
+
+rsource "Kconfig.elan"

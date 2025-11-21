@@ -1,0 +1,28 @@
+# Copyright (c) 2024 ELAN Microelectronics Corp.
+# SPDX-License-Identifier: Apache-2.0
+
+description: EM32F902 Real-Time Clock
+
+compatible: "elan,em32f902-rtc"
+
+include:
+  - name: base.yaml
+
+properties:
+  reg:
+    required: true
+
+  clocks:
+    required: true
+
+  interrupts:
+    required: false
+
+  clock-frequency:
+    type: int
+    default: 32768
+    description: |
+      RTC clock frequency in Hz. Typically 32768 Hz for external crystal.
+
+  label:
+    required: false

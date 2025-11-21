@@ -1,0 +1,56 @@
+# Copyright (c) 2024 Elan Microelectronics Corp.
+# SPDX-License-Identifier: Apache-2.0
+
+config CRYPTO_EM32_SHA
+	bool "EM32F967 SHA256 Hardware Acceleration"
+	default y
+	depends on DT_HAS_ELAN_EM32_CRYPTO_ENABLED
+	select CRYPTO
+	help
+	  Enable hardware SHA256 acceleration for EM32F967 microcontroller.
+	  This driver provides SHA-256 hash computation using the dedicated
+	  cryptographic hardware engine.
+
+if CRYPTO_EM32_SHA
+
+config CRYPTO_EM32_SHA_INTERRUPT
+	bool "Use interrupt-driven operation"
+	default n
+	help
+	  Enable interrupt-driven SHA256 operations instead of polling.
+	  This can improve system responsiveness but requires interrupt
+	  support to be properly configured.
+
+
+config CRYPTO_EM32_SHA_PREALLOC_SIZE
+	int "Initial accumulation pre-allocation size (bytes)"
+	default 8192
+	range 512 1048576
+	help
+	  When the driver switches from the small 256-byte legacy buffer to
+	  the accumulation path (single-run hashing), it will ensure the
+	  accumulation buffer is at least this large to reduce late
+	  reallocations during long messages. Increase if you commonly hash
+	  multi-kilobyte messages and have enough heap.
+
+config CRYPTO_EM32_SHA_MAX_ACCUM_SIZE
+	int "Maximum accumulation buffer size (bytes)"
+	default 65536
+	range 4096 1048576
+	help
+	  Upper bound for the total accumulation buffer size used to collect
+	  input prior to the single-run hardware hash. If an input exceeds
+	  this size, updates will fail with -ENOMEM. Set based on available
+	  RAM and expected message sizes.
+
+
+config CRYPTO_EM32_SHA_TIMEOUT_USEC
+	int "SHA engine completion timeout (usec)"
+	default 100000
+	range 1000 5000000
+	help
+	  Maximum time to wait for the SHA engine to signal completion before
+	  aborting with a timeout error. Increase if your system clocking is
+	  slower or you hash very large inputs.
+
+endif # CRYPTO_EM32_SHA

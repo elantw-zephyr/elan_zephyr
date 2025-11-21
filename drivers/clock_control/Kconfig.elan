@@ -1,0 +1,11 @@
+# Copyright (c) 2025 Elan Microelectronics Corp.
+#
+# SPDX-License-Identifier: Apache-2.0
+
+config CLOCK_CONTROL_EM32_AHB
+	bool "Elan EM32 AHB clock control"
+	default y
+
+config CLOCK_CONTROL_EM32_APB
+	bool "Elan EM32 APB clock control"
+	default y

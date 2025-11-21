@@ -1,0 +1,18 @@
+# Copyright (c) 2024 ELAN Microelectronics Corp.
+# SPDX-License-Identifier: Apache-2.0
+
+# EM32 Watchdog driver configuration
+
+config WDT_EM32
+	bool "ELAN EM32 Watchdog driver"
+	default y
+	depends on DT_HAS_ELAN_EM32_WDT_ENABLED
+	help
+	  Enable Watchdog driver for ELAN EM32 family microcontrollers.
+	  
+	  The EM32 Watchdog controller supports:
+	  - 32-bit down counter with configurable timeout
+	  - Reset generation on timeout
+	  - Interrupt generation before reset (optional)
+	  - Lock mechanism to prevent accidental configuration changes
+	  - Feed operation to reset the counter

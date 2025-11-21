@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: Apache-2.0
+
+# Elan EM32 BBRAM driver
+
+config BBRAM_EM32
+	bool "Elan EM32 Battery-Backed RAM driver"
+	default y
+	depends on DT_HAS_ELAN_EM32_BBRAM_ENABLED
+	help
+	  Enable the EM32 Battery-Backed RAM driver.
+	  
+	  The EM32 family provides 64 bytes (16 × 32-bit registers) of backup
+	  registers that retain data when powered by backup battery (VBAT).
+	  
+	  This driver manages the backup domain write protection and provides
+	  access to 60 bytes of user data (4 bytes reserved for status).

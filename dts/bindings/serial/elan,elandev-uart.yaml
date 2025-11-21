@@ -1,0 +1,28 @@
+# Copyright (c) 2025 Elan Microelectronics Corp..
+# SPDX-License-Identifier: Apache-2.0
+
+description: ELAN 967 UART
+
+compatible: "elan,elandev-uart"
+
+include:
+  - name: uart-controller.yaml
+  - name: pinctrl-device.yaml
+  - name: reset-device.yaml
+  - name: uart-controller-pin-inversion.yaml
+
+properties:
+  clocks:
+    type: phandle-array
+    description: Input clock source for UART peripheral.
+    required: true
+  reg:
+    required: true
+  current-speed:
+    required: true
+
+  pinctrl-0:
+    required: true
+
+  pinctrl-names:
+    required: true

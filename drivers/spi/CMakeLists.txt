@@ -1,0 +1,1 @@
+zephyr_library_sources_ifdef(CONFIG_SPI_ELAN_ELANDEV spi_elandev_spi2.c)

@@ -1,0 +1,32 @@
+# EM32F967 TRNG specific Kconfig
+# SPDX-License-Identifier: Apache-2.0
+
+config ENTROPY_EM32_TRNG
+    bool "Elan EM32F967 TRNG"
+    depends on SOC_EM32F967
+    default y
+    help
+      Enable the EM32F967 on-chip True Random Number Generator driver.
+
+
+
+config ENTROPY_EM32_TRNG_STARTUP_TIMEOUT_MS
+  int "Startup ready timeout (ms)"
+  depends on ENTROPY_EM32_TRNG
+  default 100
+    range 1 1000
+    help
+      Maximum time to wait for the TRNG to indicate data ready after enabling.
+
+
+
+config ENTROPY_EM32_TRNG_INIT_PRIORITY
+    int "TRNG init priority (POST_KERNEL level)"
+    depends on ENTROPY_EM32_TRNG
+    range 0 99
+    default 95
+    help
+      Initialization priority used at POST_KERNEL init level. Set to 95 to ensure clock control and other dependencies are ready. Lower values
+      initialize earlier within the level. Increase the number to make TRNG
+      initialize later than other POST_KERNEL devices it depends on.
+

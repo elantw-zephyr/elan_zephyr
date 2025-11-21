@@ -1,0 +1,16 @@
+
+description: ELAN e967 SPI controller
+
+compatible: "elan,elandev-spi2"
+
+include:
+  - spi-controller.yaml
+  - pinctrl-device.yaml
+
+properties:
+  reg:
+    required: true
+  clocks:
+    type: phandle-array
+    description: Source of SPI clock.
+    required: true

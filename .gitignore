@@ -1,0 +1,53 @@
+# Build artifacts
+/build/
+build/
+**/build/
+*.elf
+*.bin
+*.hex
+*.map
+
+# Zephyr-related
+modules/
+tools/
+CMakeFiles/
+cmake_install.cmake
+Makefile
+CMakeCache.txt
+
+# User-specific
+*.swp
+*.log
+*.bak
+*.tmp
+*.orig
+
+# IDE/editor specific
+.vscode/
+.idea/
+*.code-workspace
+*.sublime-workspace
+*.sublime-project
+
+# Python virtualenv
+.venv/
+venv/
+ENV/
+env/
+__pycache__/
+*.py[cod]
+
+# Git
+.DS_Store
+*.patch
+*.diff
+.clang-format
+
+# Ignore Windows/WSL copied temp/metadata files
+*~
+*.tmp
+*.TMP
+*.localized
+*:$DATA
+*:Zone.Identifier
+

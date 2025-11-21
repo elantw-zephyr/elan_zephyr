@@ -1,0 +1,29 @@
+# Copyright (c) 2024 ELAN Microelectronics Corp.
+# SPDX-License-Identifier: Apache-2.0
+
+description: EM32 Watchdog Timer
+
+compatible: "elan,em32-wdt"
+
+include:
+  - name: base.yaml
+
+properties:
+  reg:
+    required: true
+
+  clocks:
+    required: true
+
+  interrupts:
+    required: false
+
+  timeout-sec:
+    type: int
+    default: 30
+    description: |
+      Default watchdog timeout in seconds.
+      The actual timeout depends on the clock frequency and prescaler.
+
+  label:
+    required: false

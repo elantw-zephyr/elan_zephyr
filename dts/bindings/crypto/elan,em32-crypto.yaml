@@ -1,0 +1,24 @@
+# Copyright (c) 2024 Elan Microelectronics Corp.
+# SPDX-License-Identifier: Apache-2.0
+
+description: EM32F967 Cryptographic Hardware Acceleration
+
+compatible: "elan,em32-crypto"
+
+include: [base.yaml, pinctrl-device.yaml]
+
+properties:
+  reg:
+    required: true
+
+  clocks:
+    required: true
+
+  interrupts:
+    required: false
+
+  pinctrl-0:
+    required: false
+
+  pinctrl-names:
+    required: false

@@ -1,0 +1,29 @@
+# Copyright (c) 2024 ELAN Microelectronics Corp.
+# SPDX-License-Identifier: Apache-2.0
+
+description: ELAN EM32F967 DMA controller
+
+compatible: "elan,em32f967-dma"
+
+include: dma-controller.yaml
+
+properties:
+  reg:
+    required: true
+
+  interrupts:
+    required: true
+
+  clocks:
+    required: true
+
+  "#dma-cells":
+    const: 1
+
+  dma-channels:
+    type: int
+    required: true
+    description: Number of DMA channels supported by the controller
+
+dma-cells:
+  - channel

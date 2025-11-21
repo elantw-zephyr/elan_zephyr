@@ -1,0 +1,8 @@
+name: elan_zephyr
+build:
+  cmake: .
+  kconfig: Kconfig
+  settings:
+    board_root: .
+    dts_root: .
+    soc_root: .

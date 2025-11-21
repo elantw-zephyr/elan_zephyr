@@ -1,0 +1,11 @@
+# Copyright (c) 2025 Elan Microelectronics Corp.
+#
+# SPDX-License-Identifier: Apache-2.0
+
+config FLASH_EM32
+	bool "ELAN eM32 flash controller driver"
+	default y
+	depends on DT_HAS_ELAN_EM32_FLASH_CONTROLLER_ENABLED
+	select FLASH_HAS_DRIVER_ENABLED
+	help
+	  This option enables Elan eM32 flash driver.

@@ -1,0 +1,38 @@
+description: |
+  Elan EM32 Battery-Backed RAM (BBRAM) driver
+
+  The EM32 family provides 64 bytes (16 × 32-bit registers) of backup registers
+  that retain data when powered by backup battery (VBAT).
+  
+  Note: This driver uses hardware-specific clock gating (BKP clock bit 24)
+  rather than the generic clock control framework.
+
+  Example:
+    bbram0: bbram@40033000 {
+        compatible = "elan,em32-bbram";
+        reg = <0x40033000 0x40>;
+        backup-regs-count = <16>;
+        status = "okay";
+    };
+
+compatible: "elan,em32-bbram"
+
+include: [base.yaml]
+
+properties:
+  reg:
+    required: true
+    description: |
+      Register space for backup registers
+      
+  backup-regs-count:
+    type: int
+    required: true
+    description: |
+      Number of 32-bit backup registers available
+      
+  clocks:
+    required: false
+    description: |
+      Optional clock control (driver uses hardware-specific BKP clock gate)
+      Clock source for backup domain access

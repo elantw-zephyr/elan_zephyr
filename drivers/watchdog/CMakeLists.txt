@@ -1,0 +1,1 @@
+zephyr_library_sources_ifdef(CONFIG_WDT_EM32 wdt_em32.c)

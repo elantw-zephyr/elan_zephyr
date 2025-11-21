@@ -1,0 +1,12 @@
+# Copyright (c) 2025 Elan Microelectronics Corp.
+# SPDX-License-Identifier: Apache-2.0
+
+description: Elan eM32F967 32-bit Unique Identifier
+
+compatible: "elan,em32-uid"
+
+include: base.yaml
+
+properties:
+  reg:
+    required: true

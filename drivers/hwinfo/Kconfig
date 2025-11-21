@@ -1,0 +1,29 @@
+# HW Info driver configuration options
+
+# Copyright (c) 2025 Elan Microelectronics Corp.
+#
+# SPDX-License-Identifier: Apache-2.0
+
+#
+# HW Info drivers
+#
+
+menuconfig HWINFO
+	bool "Hardware Information drivers"
+	help
+	  Enable hwinfo driver.
+
+if HWINFO
+
+module = HWINFO
+module-str = HWINFO
+source "subsys/logging/Kconfig.template.log_config"
+
+config HWINFO_HAS_DRIVER
+	bool
+	help
+	  This is an option enabled by individual drivers to signal that there is a hwinfo driver.
+
+rsource "Kconfig.elan"
+
+endif # HWINFO
