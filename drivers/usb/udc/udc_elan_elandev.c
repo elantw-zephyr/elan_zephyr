@@ -26,6 +26,8 @@ LOG_MODULE_REGISTER(udc_e967, CONFIG_UDC_DRIVER_LOG_LEVEL);
 #define EP0_MPS                 8
 #define EP_MPS                  64
 
+#define _IS_SET_CLEAR_FEATURE_PATCH 1
+
 enum UDC_E967_MSG_TYPE {
 	UDC_E967_MSG_TYPE_SETUP,
 	UDC_E967_MSG_TYPE_XFER,
@@ -94,6 +96,7 @@ struct udc_e967_data {
 	uint32_t ep0_proc_ref;
 	uint32_t is_addressed_state;
 	uint32_t is_configured_state;
+	uint32_t is_proc_remote_wakeup;
 	volatile uint32_t *reg_ep0_data_buf;
 	struct e967_usbd_ep epx_ctrl[USB_NUM_BIDIR_ENDPOINTS - 1];
 
@@ -518,13 +521,11 @@ static int udc_e967_ep_clear_halt(const struct device *dev, struct udc_ep_config
 static int udc_e967_host_wakeup(const struct device *dev)
 {
 	struct udc_e967_data *priv = udc_get_private(dev);
-	
+
 	priv->reg_udc_ctrl1->UDC_CTRL1_.UDCCTRL1BIT.DEVRESUME = 1;
-	
 	k_busy_wait( 10000);
-	
 	priv->reg_udc_ctrl1->UDC_CTRL1_.UDCCTRL1BIT.DEVRESUME = 0;
-	
+
 	return 0;
 }
 
@@ -697,6 +698,50 @@ void _update_configured_event( const struct device *dev)
 			priv->reg_ep0_int_en->UDCEP0INT_EN.UDC_EP0_INT_ENBIT.SETUPINTEN = 1;
 	}
 }
+
+
+#if (_IS_SET_CLEAR_FEATURE_PATCH)
+int _handle_set_feature_remote_wakeup( const struct device *dev, uint32_t isSet)
+{
+	struct udc_e967_data *priv = udc_get_private(dev);
+	struct udc_e967_msg msg;
+
+	if( priv->is_configured_state != 3) {
+		return 0;
+	}
+
+	priv->ep0_in_size = 0;
+	priv->ep0_out_size = 0;
+
+	priv->setup_pkg[0] = 0x00;
+	if(isSet) {
+		priv->is_proc_remote_wakeup = 1;
+		priv->setup_pkg[1] = 0x03;
+	}else{
+		priv->is_proc_remote_wakeup = 2;
+		priv->setup_pkg[1] = 0x01;
+	}
+	priv->setup_pkg[2] = 0x01;
+	priv->setup_pkg[3] = 0x00;
+	priv->setup_pkg[4] = 0x00;
+	priv->setup_pkg[5] = 0x00;
+	priv->setup_pkg[6] = 0x00;
+	priv->setup_pkg[7] = 0x00;
+	
+	priv->ep0_cur_ref++;
+
+	msg.type = UDC_E967_MSG_TYPE_SETUP;
+	msg.setup.ref = priv->ep0_cur_ref;
+
+	k_msgq_put(priv->msgq, &msg, K_NO_WAIT);
+
+#if (__GLOBAL_DEBUG_LOG__ > 0)
+	printk("[INFO] issue set-feature:remote-wakeup request\n");
+#endif
+
+	return 1;
+}
+#endif
 
 static int udc_e967_msg_handler_setup(const struct device *dev, struct udc_e967_msg *msg)
 {
@@ -916,14 +961,24 @@ static void e967_usb_suspend_isr(const struct device *dev)
 	if (priv->reg_udc_int_sta->UDCINT_STA.UDC_INT_STABIT.SUSPENDINTSF == 1) {
 		priv->reg_udc_int_sta->UDCINT_STA.UDC_INT_STABIT.SUSPENDINTSFCLR = 1;
 	}
-	
-#if (__GLOBAL_DEBUG_LOG__ > 0)		
+
+#if (__GLOBAL_DEBUG_LOG__ > 0)
 	printk("[INFO] >>> usb [suspend] signal\n");
-#endif	
-	
+#endif
+
+#if (_IS_SET_CLEAR_FEATURE_PATCH)
+	if (_handle_set_feature_remote_wakeup( dev, 1))
+	{
+		return;
+	}
+
 	udc_set_suspended(dev, true);
-	udc_submit_event(dev, UDC_EVT_SUSPEND, 0);	
-	
+	udc_submit_event(dev, UDC_EVT_SUSPEND, 0);
+#else
+	udc_set_suspended(dev, true);
+	udc_submit_event(dev, UDC_EVT_SUSPEND, 0);
+#endif
+
 	return;
 }
 static void e967_usb_resume_isr(const struct device *dev)
@@ -939,7 +994,11 @@ static void e967_usb_resume_isr(const struct device *dev)
 	
 	udc_set_suspended(dev, false);
 	udc_submit_event(dev, UDC_EVT_RESUME, 0);
-	
+
+#if (_IS_SET_CLEAR_FEATURE_PATCH)
+	_handle_set_feature_remote_wakeup( dev, 0);
+#endif
+
 	return;
 }
 static void e967_usb_reset_isr(const struct device *dev)
@@ -1045,19 +1104,46 @@ static int _usbd_ctrl_in(const struct device *dev, uint8_t ep)
 			buf = udc_buf_get(ep_cfg);
 			udc_submit_ep_event(dev, buf, 0);
 			priv->is_addressed_state = 2;
-#if ( __EP0_LOG__ > 0)			
+#if ( __EP0_LOG__ > 0)
 			printk("[INFO] dev is addressed\n");
 #endif
 			return 0;
 		} else if (priv->is_configured_state == 2) {
 			buf = udc_buf_get(ep_cfg);
 			udc_submit_ep_event(dev, buf, 0);
+
+#if (_IS_SET_CLEAR_FEATURE_PATCH)
+			priv->is_configured_state = 3;
+#else
 			priv->is_configured_state = 2;
-#if ( __EP0_LOG__ > 0)						
+#endif
+
+#if ( __EP0_LOG__ > 0)
 			printk("[INFO] dev is configured\n");
 #endif
 			return 0;
 		}
+#if (_IS_SET_CLEAR_FEATURE_PATCH)
+		else if ( priv->is_proc_remote_wakeup)
+		{
+			buf = udc_buf_get(ep_cfg);
+			udc_submit_ep_event(dev, buf, 0);
+
+			if( priv->is_proc_remote_wakeup == 1) {
+#if ( __GLOBAL_DEBUG_LOG__ > 0)
+				printk("[INFO] issue UDC_EVT_SUSPEND evt\n");
+#endif
+				udc_set_suspended(dev, true);
+				udc_submit_event(dev, UDC_EVT_SUSPEND, 0);
+			}
+
+			priv->is_proc_remote_wakeup = 0;
+
+#if ( __GLOBAL_DEBUG_LOG__ > 0)
+			printk("[INFO] remote-wake event is processed\n");
+#endif
+		}
+#endif
 	}
 
 	if (priv->ep0_in_size) {
@@ -1982,6 +2068,7 @@ static const struct udc_api udc_e967_api = {
 		.ep0_proc_ref = 0,                                                                 \
 		.is_configured_state = 0,                                                          \
 		.is_addressed_state = 0,                                                           \
+		.is_proc_remote_wakeup = 0,                                                        \
 		.reg_ep_buf_sta = EPBUFSTA,                                                        \
 		.reg_udc_ctrl = UDCCTRL,                                                           \
 		.reg_udc_ctrl1 = UDCCTRL1,                                                         \
@@ -2086,6 +2173,7 @@ static struct udc_e967_data e967_udc_priv_0 = {.setup_pkg = {0},
 					       .ep0_proc_ref = 0,
 					       .is_configured_state = 0,
 					       .is_addressed_state = 0,
+					       .is_proc_remote_wakeup = 0,
 					       .reg_ep_buf_sta = EPBUFSTA,
 					       .reg_udc_ctrl = UDCCTRL,
 					       .reg_udc_ctrl1 = UDCCTRL1,
