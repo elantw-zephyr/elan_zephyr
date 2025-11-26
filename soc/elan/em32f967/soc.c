@@ -1,3 +1,9 @@
+/*
+ * Copyright (c) 2025 Elan Microelectronics Corp.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 #include "soc.h"
 
 #include <zephyr/kernel.h>
