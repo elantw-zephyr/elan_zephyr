@@ -96,23 +96,23 @@
 				clocks = <&clk_ahb>;
 				status = "disabled";
 			};
+		};
 
-			uart1: serial@40002000 {
-				compatible = "elan,elandev-uart";
-				reg = <0x40002000 0x4c>;
-				clocks = <&clk_apb>;
-				status = "disabled";
-			};
+		uart1: serial@40002000 {
+			compatible = "elan,elandev-uart";
+			reg = <0x40002000 0x4c>;
+			clocks = <&clk_apb>;
+			status = "disabled";
+		};
 
-			spi2: spi@40013000 {
-				compatible = "elan,elandev-spi2";
-				reg = <0x40013000 0x1000>;
-				#address-cells = <1>;
-				#size-cells = <0>;
-				interrupts = <25 0>;
-				clocks = <&clk_apb>;
-				status = "disabled";
-			};
+		spi2: spi@40013000 {
+			compatible = "elan,elandev-spi2";
+			reg = <0x40013000 0x1000>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+			interrupts = <25 0>;
+			clocks = <&clk_apb>;
+			status = "disabled";
 		};
 
 		em32_flash_controller: flash-controller@40034000 {
@@ -182,37 +182,47 @@
 			status = "disabled";
 		};
 		/* Timer Controllers */
-        timer1: timer@40000000 {
-        	compatible = "elan,em32-timer";
-            reg = <0x40000000 0x1000>;
-            clocks = <&clk_apb>;
-            interrupts = <16 0>;
-            status = "disabled";
-        };
+		timer1: timer@40000000 {
+			compatible = "elan,em32-timer";
+			reg = <0x40000000 0x1000>;
+			clocks = <&clk_apb>;
+			interrupts = <16 0>;
+			status = "disabled";
+		};
 
-        timer2: timer@40001000 {
-            compatible = "elan,em32-timer";
-            reg = <0x40001000 0x1000>;
-            clocks = <&clk_apb>;
-            interrupts = <17 0>;
-            status = "disabled";
-        };
+		timer2: timer@40001000 {
+			compatible = "elan,em32-timer";
+			reg = <0x40001000 0x1000>;
+			clocks = <&clk_apb>;
+			interrupts = <17 0>;
+			status = "disabled";
+		};
 
-        timer3: timer@40010000 {
-            compatible = "elan,em32-timer";
-            reg = <0x40010000 0x1000>;
-            clocks = <&clk_apb>;
-            interrupts = <18 0>;
-            status = "disabled";
-        };
+		timer3: timer@40010000 {
+			compatible = "elan,em32-timer";
+			reg = <0x40010000 0x1000>;
+			clocks = <&clk_apb>;
+			interrupts = <18 0>;
+			status = "disabled";
+		};
 
-        timer4: timer@40011000 {
-            compatible = "elan,em32-timer";
-            reg = <0x40011000 0x1000>;
-            clocks = <&clk_apb>;
-            interrupts = <19 0>;
-            status = "disabled";
-        };
+		timer4: timer@40011000 {
+			compatible = "elan,em32-timer";
+			reg = <0x40011000 0x1000>;
+			clocks = <&clk_apb>;
+			interrupts = <19 0>;
+			status = "disabled";
+		};
+
+		/* Real-Time Clock */
+		rtc0: rtc@40032000 {
+			compatible = "elan,em32-rtc";
+			reg = <0x40032000 0x1000>;
+			clocks = <&clk_apb>;
+			interrupts = <21 0>;
+			clock-frequency = <32768>;
+			status = "disabled";
+		};
 	};
 };
 

@@ -1,0 +1,18 @@
+# Copyright (c) 2024 ELAN Microelectronics Corp.
+# SPDX-License-Identifier: Apache-2.0
+
+# EM32 RTC driver configuration
+
+config RTC_EM32
+	bool "ELAN EM32 RTC driver"
+	default y
+	depends on DT_HAS_ELAN_EM32_RTC_ENABLED
+	help
+	  Enable RTC driver for ELAN EM32 microcontroller family.
+
+	  The EM32 RTC controller supports:
+	  - Real-time clock with second, minute, hour, day counters
+	  - Alarm functionality with configurable time
+	  - Interrupt generation on alarm match
+	  - Low power operation with external 32.768kHz crystal
+	  - Calendar functionality

@@ -134,3 +134,8 @@ zephyr_udc0: &usbd {
 &timer2 {
         status = "okay";
 };
+
+/* Enable RTC */
+&rtc0 {
+        status = "okay";
+};
