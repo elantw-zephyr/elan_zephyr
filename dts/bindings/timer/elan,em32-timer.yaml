@@ -1,0 +1,29 @@
+# Copyright (c) 2024 ELAN Microelectronics Corp.
+# SPDX-License-Identifier: Apache-2.0
+
+description: EM32 Timer Controller
+
+compatible: "elan,em32-timer"
+
+include:
+  - name: base.yaml
+
+properties:
+  reg:
+    required: true
+
+  clocks:
+    required: true
+
+  interrupts:
+    required: true
+
+  prescaler:
+    type: int
+    default: 1
+    description: |
+      Timer prescaler value. Valid values are 1, 16, or 256.
+      This divides the input clock frequency.
+
+  label:
+    required: false

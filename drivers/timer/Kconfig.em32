@@ -1,0 +1,20 @@
+# Copyright (c) 2024 ELAN Microelectronics Corp.
+# SPDX-License-Identifier: Apache-2.0
+
+# EM32 Timer driver configuration
+
+config TIMER_EM32
+	bool "ELAN EM32 Timer driver"
+	default y
+	depends on DT_HAS_ELAN_EM32_TIMER_ENABLED
+	help
+	  Enable Timer driver for ELAN EM32 microcontroller family.
+
+	  The EM32 Timer controller supports:
+	  - 32-bit down counter with auto-reload
+	  - Configurable prescaler (1, 16, 256)
+	  - One-shot and periodic modes
+	  - Interrupt generation on underflow
+	  - System timer functionality
+
+

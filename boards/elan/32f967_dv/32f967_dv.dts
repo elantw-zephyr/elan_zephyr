@@ -125,3 +125,12 @@ zephyr_udc0: &usbd {
 &crypto0 {
 	status = "okay";
 };
+
+/* Enable Timer controllers */
+&timer1 {
+        status = "okay";
+};
+
+&timer2 {
+        status = "okay";
+};

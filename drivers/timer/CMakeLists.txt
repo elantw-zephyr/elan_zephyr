@@ -1,0 +1,1 @@
+zephyr_library_sources_ifdef(CONFIG_TIMER_EM32 timer_em32.c)

@@ -1,0 +1,1 @@
+source "${ZEPHYR_ELAN_ZEPHYR_MODULE_DIR}/drivers/timer/Kconfig.em32"

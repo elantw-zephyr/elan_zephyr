@@ -181,6 +181,38 @@
 			clocks = <&clk_apb>;
 			status = "disabled";
 		};
+		/* Timer Controllers */
+        timer1: timer@40000000 {
+        	compatible = "elan,em32-timer";
+            reg = <0x40000000 0x1000>;
+            clocks = <&clk_apb>;
+            interrupts = <16 0>;
+            status = "disabled";
+        };
+
+        timer2: timer@40001000 {
+            compatible = "elan,em32-timer";
+            reg = <0x40001000 0x1000>;
+            clocks = <&clk_apb>;
+            interrupts = <17 0>;
+            status = "disabled";
+        };
+
+        timer3: timer@40010000 {
+            compatible = "elan,em32-timer";
+            reg = <0x40010000 0x1000>;
+            clocks = <&clk_apb>;
+            interrupts = <18 0>;
+            status = "disabled";
+        };
+
+        timer4: timer@40011000 {
+            compatible = "elan,em32-timer";
+            reg = <0x40011000 0x1000>;
+            clocks = <&clk_apb>;
+            interrupts = <19 0>;
+            status = "disabled";
+        };
 	};
 };
 
