@@ -117,14 +117,14 @@ zephyr_udc0: &usbd {
 
 /* Enable Timer controllers */
 &timer1 {
-        status = "okay";
+	status = "okay";
 };
 
 &timer2 {
-        status = "okay";
+	status = "okay";
 };
 
 /* Enable RTC */
 &rtc0 {
-        status = "okay";
+	status = "okay";
 };

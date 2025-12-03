@@ -181,6 +181,7 @@
 			clocks = <&clk_apb>;
 			status = "disabled";
 		};
+
 		/* Timer Controllers */
 		timer1: timer@40000000 {
 			compatible = "elan,em32-timer";
