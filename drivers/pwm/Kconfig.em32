@@ -1,0 +1,13 @@
+# Copyright (c) 2024 ELAN Microelectronics Corp.
+# SPDX-License-Identifier: Apache-2.0
+
+config PWM_EM32
+	bool "ELAN EM32 PWM driver"
+	default y
+	depends on DT_HAS_ELAN_EM32_PWM_ENABLED
+	select PINCTRL
+	help
+	  Enable PWM driver for ELAN EM32F967 microcontroller.
+	  The EM32F967 has a dedicated 6-channel PWM controller with
+	  complementary outputs and programmable dead-time insertion.
+

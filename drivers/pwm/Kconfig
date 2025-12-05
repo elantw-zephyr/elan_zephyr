@@ -1,0 +1,7 @@
+# Copyright (c) 2024 ELAN Microelectronics Corp.
+# SPDX-License-Identifier: Apache-2.0
+
+# PWM driver configuration options
+
+rsource "Kconfig.em32"
+

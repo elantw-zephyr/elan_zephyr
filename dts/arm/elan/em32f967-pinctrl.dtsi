@@ -61,8 +61,8 @@
 				bias-pull-up;
 			};
 
-			/* SPI1 (Elan SPI, Slave) Pin Configurations - PB0/PB1/PB2/PB3 (Default) */
-			/* SPI1 functions on PB0-PB3: MUX 010 = AF2, IP_Share[1:0]=00 */
+			/* SPI1 (Elan SPI) Pin Configurations - PB0/PB1/PB2/PB3 (Default) */
+			/* SPI1 functions on PB0-PB3: MUX 001 = AF1, IP_Share[1:0]=00 */
 			spi1_cs_pb0: spi1_cs_pb0 {
 				pinmux = <EM32F967_PINMUX('B', 0, AF1)>;
 				drive-strength = <4>;
@@ -132,35 +132,85 @@
 				drive-open-drain;
 			};
 
-			/* PWM Pin Configurations - PA0-PA6 */
-			/* IOMUX 001 = AF1, IP_Share[18]=1 */
-			pwm_pa0: pwm_pa0 {
-				pinmux = <EM32F967_PINMUX('B', 10, AF1)>;  /* PWMA */
+			/*
+			 * PWM Pin Configurations
+			 * EM32F967 supports 6 PWM channels (PWMA-PWMF)
+			 * with two pin assignment options:
+			 *
+			 * Primary Assignment (PWM_S=0, IP_Share[18]=0, IOMUX=AF7):
+			 *   PWMA: PA0 (P), PA1 (N)
+			 *   PWMB: PA2 (P), PA3 (N)
+			 *   PWMC: PA4 (P), PA5 (N)
+			 *   PWMD/PWME/PWMF share with PWMA/PWMB/PWMC respectively
+			 *
+			 * Alternative Assignment (PWM_S=1, IP_Share[18]=1, IOMUX=AF1):
+			 *   PWMA: PB10 (P), PB11 (N)
+			 *   PWMB: PB12 (P), PB13 (N)
+			 *   PWMC: PB14 (P), PB15 (N)
+			 *   PWMD/PWME/PWMF share with PWMA/PWMB/PWMC respectively
+			 */
+
+			/* Primary PWM Pin Configurations - PA0-PA5 (PWM_S=0) */
+			/* IOMUX 111 = AF7 for PWM on Port A */
+			/omit-if-no-ref/ pwma_pa0_p: pwma_pa0_p {
+				pinmux = <EM32F967_PINMUX('A', 0, AF7)>;  /* PWMA Positive */
 				drive-strength = <4>;
 			};
 
-			pwm_pa1: pwm_pa1 {
-				pinmux = <EM32F967_PINMUX('B', 11, AF1)>;  /* PWMD/PWMA1 */
+			/omit-if-no-ref/ pwma_pa1_n: pwma_pa1_n {
+				pinmux = <EM32F967_PINMUX('A', 1, AF7)>;  /* PWMA/PWMD Negative */
 				drive-strength = <4>;
 			};
 
-			pwm_pa2: pwm_pa2 {
-				pinmux = <EM32F967_PINMUX('B', 12, AF1)>;  /* PWMB */
+			/omit-if-no-ref/ pwmb_pa2_p: pwmb_pa2_p {
+				pinmux = <EM32F967_PINMUX('A', 2, AF7)>;  /* PWMB Positive */
 				drive-strength = <4>;
 			};
 
-			pwm_pa3: pwm_pa3 {
-				pinmux = <EM32F967_PINMUX('B', 13, AF1)>;  /* PWME/PWMB1 */
+			/omit-if-no-ref/ pwmb_pa3_n: pwmb_pa3_n {
+				pinmux = <EM32F967_PINMUX('A', 3, AF7)>;  /* PWMB/PWME Negative */
 				drive-strength = <4>;
 			};
 
-			pwm_pa4: pwm_pa4 {
-				pinmux = <EM32F967_PINMUX('B', 14, AF1)>;  /* PWMC */
+			/omit-if-no-ref/ pwmc_pa4_p: pwmc_pa4_p {
+				pinmux = <EM32F967_PINMUX('A', 4, AF7)>;  /* PWMC Positive */
 				drive-strength = <4>;
 			};
 
-			pwm_pa5: pwm_pa5 {
-				pinmux = <EM32F967_PINMUX('B', 15, AF1)>;  /* PWMF/PWMC1 */
+			/omit-if-no-ref/ pwmc_pa5_n: pwmc_pa5_n {
+				pinmux = <EM32F967_PINMUX('A', 5, AF7)>;  /* PWMC/PWMF Negative */
+				drive-strength = <4>;
+			};
+
+			/* Alternative PWM Pin Configurations - PB10-PB15 (PWM_S=1) */
+			/* IOMUX 001 = AF1 for PWM on Port B */
+			/omit-if-no-ref/ pwma_pb10_p: pwma_pb10_p {
+				pinmux = <EM32F967_PINMUX('B', 10, AF1)>;  /* PWMA Positive */
+				drive-strength = <4>;
+			};
+
+			/omit-if-no-ref/ pwma_pb11_n: pwma_pb11_n {
+				pinmux = <EM32F967_PINMUX('B', 11, AF1)>;  /* PWMA/PWMD Negative */
+				drive-strength = <4>;
+			};
+
+			/omit-if-no-ref/ pwmb_pb12_p: pwmb_pb12_p {
+				pinmux = <EM32F967_PINMUX('B', 12, AF1)>;  /* PWMB Positive */
+				drive-strength = <4>;
+			};
+
+			/omit-if-no-ref/ pwmb_pb13_n: pwmb_pb13_n {
+				pinmux = <EM32F967_PINMUX('B', 13, AF1)>;  /* PWMB/PWME Negative */
+				drive-strength = <4>;
+			};
+
+			/omit-if-no-ref/ pwmc_pb14_p: pwmc_pb14_p {
+				pinmux = <EM32F967_PINMUX('B', 14, AF1)>;  /* PWMC Positive */
+				drive-strength = <4>;
+			};
+
+			/omit-if-no-ref/ pwmc_pb15_n: pwmc_pb15_n {
+				pinmux = <EM32F967_PINMUX('B', 15, AF1)>;  /* PWMC/PWMF Negative */
 				drive-strength = <4>;
 			};
 

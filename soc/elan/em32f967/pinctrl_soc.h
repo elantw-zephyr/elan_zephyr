@@ -74,7 +74,10 @@ typedef struct pinctrl_soc_pin {
 #define EM32_IP_SHARE_I2C2         9  /* [9] I2C2 pin assignment */
 #define EM32_IP_SHARE_USART        10 /* [10] USART pin assignment */
 #define EM32_IP_SHARE_DMA_CS_SHIFT 11 /* [12:11] DMA_CS pin assignment */
-#define EM32_IP_SHARE_PWM          18 /* [18] PWM pin assignment */
+#define EM32_IP_SHARE_PWM_SW1      15 /* [15] PWM Switch 1: 0=PWMD, 1=PWMA1 (PA1/PB11 N output) */
+#define EM32_IP_SHARE_PWM_SW2      16 /* [16] PWM Switch 2: 0=PWME, 1=PWMB1 (PA3/PB13 N output) */
+#define EM32_IP_SHARE_PWM_SW3      17 /* [17] PWM Switch 3: 0=PWMF, 1=PWMC1 (PA5/PB15 N output) */
+#define EM32_IP_SHARE_PWM          18 /* [18] PWM_S pin select: 0=PA0-5, 1=PB10-15 */
 
 /**
  * @brief Utility macro to initialize pincfg field in #pinctrl_pin_t.

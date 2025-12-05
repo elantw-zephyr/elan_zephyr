@@ -128,3 +128,12 @@ zephyr_udc0: &usbd {
 &rtc0 {
 	status = "okay";
 };
+
+/* Enable PWM Controller - PWMB N output on PA3 */
+&pwm0 {
+	status = "okay";
+	use-port-a;			/* Use Port A pins (PWM_S=0) */
+	output-type = <1>;		/* N output only */
+	pinctrl-0 = <&pwmb_pa3_n>;
+	pinctrl-names = "default";
+};

@@ -181,6 +181,20 @@ static const struct em32_ioshare_config em32_ioshare_table[] = {
 	{EM32_PORT_A, 4, 5, EM32F967_AF4, EM32_IP_SHARE_I2C2, BIT(EM32_IP_SHARE_I2C2), 0, "I2C2"},
 	{EM32_PORT_B, 0, 1, EM32F967_AF5, EM32_IP_SHARE_I2C1, BIT(EM32_IP_SHARE_I2C1),
 	 BIT(EM32_IP_SHARE_I2C1), "I2C1"},
+
+	/* PWM configurations on Port A (PWM_S=0)
+	 * PA3-PA5 with AF7 require IP_Share[1:0]=2 to release pins from SPI1 function
+	 * and also require IP_Share[18]=0 (PWM_S=0) for Port A PWM routing
+	 */
+	{EM32_PORT_A, 3, 5, EM32F967_AF7, EM32_IP_SHARE_SPI1_SHIFT,
+	 (0x3U << EM32_IP_SHARE_SPI1_SHIFT) | BIT(EM32_IP_SHARE_PWM),
+	 (0x2U << EM32_IP_SHARE_SPI1_SHIFT) | 0, "PWM_PA"},
+
+	/* PWM configurations on Port B (PWM_S=1)
+	 * PB10-PB15 with AF1 require IP_Share[18]=1 for Port B PWM routing
+	 */
+	{EM32_PORT_B, 10, 15, EM32F967_AF1, EM32_IP_SHARE_PWM,
+	 BIT(EM32_IP_SHARE_PWM), BIT(EM32_IP_SHARE_PWM), "PWM_PB"},
 };
 
 /**
