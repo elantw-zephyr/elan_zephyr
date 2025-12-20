@@ -4,14 +4,17 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#ifndef _EM32F967_SOC_H_
-#define _EM32F967_SOC_H_
+#ifndef ZEPHYR_SOC_ELAN_EM32F967_SOC_H_
+#define ZEPHYR_SOC_ELAN_EM32F967_SOC_H_
 
 #include <zephyr/init.h>
 #include <zephyr/devicetree.h>
 #include <cmsis_core_m_defaults.h>
 
-#include "em32f967.h"
-#include "soc_967.h"
+#include "em32f967.h" /* TODO: remove em32f967.h */
+#include "soc_967.h" /* TODO: remove soc_967.h and elan_em32.h */
+#include "soc_sysctrl.h"
+#include "soc_pwrctrl.h"
+#include "soc_clkctrl.h"
 
-#endif
+#endif /* ZEPHYR_SOC_ELAN_EM32F967_SOC_H_ */

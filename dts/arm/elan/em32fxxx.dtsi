@@ -237,6 +237,30 @@
 			#pwm-cells = <3>;
 			status = "disabled";
 		};
+
+		/* System control */
+		sysctrl: syscon@40030000 {
+			compatible = "syscon";
+			reg = <0x40030000 0x1000>;
+			reg-io-width = <4>;
+			status = "disabled";
+		};
+
+		/* Power control */
+		pwrctrl: syscon@40031000 {
+			compatible = "syscon";
+			reg = <0x40031000 0x1000>;
+			reg-io-width = <4>;
+			status = "disabled";
+		};
+
+		/* Clock control */
+		clkctrl: syscon@40036000 {
+			compatible = "syscon";
+			reg = <0x40036000 0x1000>;
+			reg-io-width = <4>;
+			status = "disabled";
+		};
 	};
 };
 

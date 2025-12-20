@@ -116,3 +116,15 @@ zephyr_udc0: &usbd {
 	pinctrl-0 = <&pwmb_pa3_n>;
 	pinctrl-names = "default";
 };
+
+&sysctrl {
+	status = "disabled";
+};
+
+&pwrctrl {
+	status = "disabled";
+};
+
+&clkctrl {
+	status = "disabled";
+};
