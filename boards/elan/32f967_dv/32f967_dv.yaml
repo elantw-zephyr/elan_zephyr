@@ -8,4 +8,4 @@ toolchain:
 supported:
   - serial
 ram: 272
-flash: 592
+flash: 536
