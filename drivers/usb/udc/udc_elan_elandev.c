@@ -15,6 +15,9 @@
 #include <zephyr/logging/log.h>
 #include "udc_e967.h"
 
+#include "em32f967.h" /* TODO: remove em32f967.h */
+#include "soc_967.h" /* TODO: remove soc_967.h and elan_em32.h */
+
 #define __GLOBAL_DEBUG_LOG__ 0
 #define __EP0_LOG__          0
 #define __EPX_OUT_LOG__      0

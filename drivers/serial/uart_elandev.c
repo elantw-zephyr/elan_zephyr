@@ -8,6 +8,9 @@
 #include "../../include/zephyr/drivers/clock_control/clock_control_em32_apb.h"
 #include <soc.h>
 
+#include "em32f967.h" /* TODO: remove em32f967.h */
+#include "soc_967.h" /* TODO: remove soc_967.h and elan_em32.h */
+
 #define _DEVICE_ID "elan967_uart_dev"
 
 #define UART_STATE_TX_BUSY_MASK BIT(0)

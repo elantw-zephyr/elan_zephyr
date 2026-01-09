@@ -44,6 +44,9 @@
 
 #include <soc.h>
 
+#include "em32f967.h" /* TODO: remove em32f967.h */
+#include "soc_967.h" /* TODO: remove soc_967.h and elan_em32.h */
+
 LOG_MODULE_REGISTER(gpio_em32, CONFIG_GPIO_LOG_LEVEL);
 
 /* EM32F967 GPIO Register Structure is defined in soc_967.h */

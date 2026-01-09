@@ -17,7 +17,7 @@
 #include <zephyr/drivers/pinctrl.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/dt-bindings/pinctrl/em32f967-pinctrl.h>
-#include "../../../include/zephyr/drivers/pinctrl/pinctrl_em32.h"
+#include <zephyr/drivers/pinctrl/pinctrl_em32.h>
 #include <soc.h>
 
 LOG_MODULE_REGISTER(pinctrl_em32, LOG_LEVEL_INF);

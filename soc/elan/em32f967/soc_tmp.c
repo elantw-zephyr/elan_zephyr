@@ -5,6 +5,8 @@
  */
 
 #include "soc.h"
+#include "em32f967.h" /* TODO: remove em32f967.h */
+#include "soc_967.h" /* TODO: remove soc_967.h and elan_em32.h */
 
 #include <zephyr/kernel.h>
 #include <zephyr/init.h>

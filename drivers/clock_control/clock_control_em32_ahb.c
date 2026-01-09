@@ -12,6 +12,9 @@
 // #include <zephyr/drivers/clock_control/clock_control_em32_ahb.h>
 #include "../../include/zephyr/drivers/clock_control/clock_control_em32_ahb.h"
 
+#include "em32f967.h" /* TODO: remove em32f967.h */
+#include "soc_967.h" /* TODO: remove soc_967.h and elan_em32.h */
+
 #define LOG_LEVEL LOG_LEVEL_DBG
 #include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(em32_ahb);
