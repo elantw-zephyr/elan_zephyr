@@ -16,7 +16,7 @@
 #include <zephyr/init.h>
 #include <zephyr/drivers/pinctrl.h>
 #include <zephyr/logging/log.h>
-#include "../../../include/zephyr/dt-bindings/pinctrl/em32f967-pinctrl.h"
+#include <zephyr/dt-bindings/pinctrl/em32f967-pinctrl.h>
 #include "../../../include/zephyr/drivers/pinctrl/pinctrl_em32.h"
 #include <soc.h>
 

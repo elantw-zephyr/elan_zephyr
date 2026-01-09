@@ -15,7 +15,7 @@
 #include <zephyr/types.h>
 
 /* Use EM32F967 pinctrl definitions */
-#include "../../../include/zephyr/dt-bindings/pinctrl/em32f967-pinctrl.h"
+#include <zephyr/dt-bindings/pinctrl/em32f967-pinctrl.h>
 
 #ifdef __cplusplus
 extern "C" {
