@@ -1,0 +1,90 @@
+/*
+ * Copyright (c) 2026 ELAN Microelectronics Corp.
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/ {
+	chosen {
+		zephyr,console = &uart1;
+		zephyr,shell-uart = &uart1;
+		zephyr,spi2 = &spi2;
+		zephyr,udc0 = &usbd;
+		zephyr,entropy = &trng0;
+	};
+
+	aliases {
+		spi2 = &spi2;
+		watchdog0 = &wdt0;
+	};
+};
+
+&spi2 {
+	status = "okay";
+};
+
+&uart1 {
+	status = "okay";
+};
+
+&gpioa {
+	status = "okay";
+};
+
+&gpiob {
+	status = "okay";
+};
+
+&zephyr_udc0 {
+	status = "okay";
+};
+
+&uid {
+	status = "okay";
+};
+
+&bbram0 {
+	status = "okay";
+};
+
+&trng0 {
+	status = "okay";
+};
+
+&wdt0 {
+	status = "okay";
+};
+
+&crypto0 {
+	status = "okay";
+};
+
+/* Enable Timer controllers */
+&timer1 {
+	status = "okay";
+};
+
+&timer2 {
+	status = "okay";
+};
+
+/* Enable RTC */
+&rtc0 {
+	status = "okay";
+};
+
+/* Enable PWM Controller - PWMB N output on PA3 */
+&pwm0 {
+	status = "okay";
+};
+
+&sysctrl {
+	status = "disabled";
+};
+
+&pwrctrl {
+	status = "disabled";
+};
+
+&clkctrl {
+	status = "disabled";
+};

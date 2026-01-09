@@ -8,6 +8,9 @@ list(APPEND ZEPHYR_EXTRA_MODULES ${CMAKE_CURRENT_LIST_DIR}/../..)
 
 #message(STATUS "ZEPHYR_EXTRA_MODULES: ${ZEPHYR_EXTRA_MODULES}")
 
+message(STATUS "Include compat_overlays.cmake!")
+include(${ZEPHYR_EXTRA_MODULES}/cmake/compat_overlays.cmake)
+
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 project(hello_world)
 
