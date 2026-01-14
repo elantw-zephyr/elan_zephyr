@@ -1,4 +1,4 @@
-#define DT_DRV_COMPAT elan_elandev_uart
+#define DT_DRV_COMPAT elan_em32_uart
 
 #include <zephyr/kernel.h>
 #include <zephyr/drivers/uart.h>
@@ -22,29 +22,29 @@
 
 LOG_MODULE_REGISTER(elan967_uart_dev, CONFIG_UART_LOG_LEVEL);
 
-struct uart_elandev_config {
+struct uart_em32_config {
 	uintptr_t base;                 // base address from DTS `reg`
 	const struct device *clock_dev; // clock device reference from DTS "clocks" property
 	const struct pinctrl_dev_config *pcfg;
 };
 
-struct uart_elandev_data {
+struct uart_em32_data {
 	uint32_t baudrate;
 };
 
 static inline uint32_t uart_em32_read(const struct device *dev, uint32_t offset)
 {
-	const struct uart_elandev_config *config = dev->config;
+	const struct uart_em32_config *config = dev->config;
 	return sys_read32(config->base + offset);
 }
 
 static inline void uart_em32_write(const struct device *dev, uint32_t offset, uint32_t value)
 {
-	const struct uart_elandev_config *config = dev->config;
+	const struct uart_em32_config *config = dev->config;
 	sys_write32(value, config->base + offset);
 }
 
-static int _uart_poll_in(const struct device *dev, unsigned char *p_char)
+static int uart_em32_uart_poll_in(const struct device *dev, unsigned char *p_char)
 {
 	/* Check if RX data is available */
 	if (!(uart_em32_read(dev, UART_STATE_OFFSET) & UART_STATE_RX_RDY_MASK)) {
@@ -55,7 +55,7 @@ static int _uart_poll_in(const struct device *dev, unsigned char *p_char)
 	return 0;
 }
 
-static void _uart_poll_out(const struct device *dev, unsigned char out_char)
+static void uart_em32_uart_poll_out(const struct device *dev, unsigned char out_char)
 {
 	/* Wait until TX is not busy */
 	while (uart_em32_read(dev, UART_STATE_OFFSET) & UART_STATE_TX_BUSY_MASK) {
@@ -66,7 +66,7 @@ static void _uart_poll_out(const struct device *dev, unsigned char out_char)
 	uart_em32_write(dev, UART_DATA_OFFSET, out_char);
 }
 
-static int _uart_err_check(const struct device *dev)
+static int uart_em32_uart_err_check(const struct device *dev)
 {
 	uint32_t status = uart_em32_read(dev, UART_STATE_OFFSET);
 	int err = 0;
@@ -78,17 +78,17 @@ static int _uart_err_check(const struct device *dev)
 	return err;
 }
 
-static const struct uart_driver_api uart_elandev_api = {
-	.poll_in = _uart_poll_in,
-	.poll_out = _uart_poll_out,
-	.err_check = _uart_err_check,
+static const struct uart_driver_api uart_em32_api = {
+	.poll_in = uart_em32_uart_poll_in,
+	.poll_out = uart_em32_uart_poll_out,
+	.err_check = uart_em32_uart_err_check,
 };
 
-static int uart_elandev_init(const struct device *dev)
+static int uart_em32_init(const struct device *dev)
 {
-	const struct uart_elandev_config *cfg = dev->config;
+	const struct uart_em32_config *cfg = dev->config;
 	const struct device *apb_clk_dev = cfg->clock_dev;
-	struct uart_elandev_data *data = dev->data;
+	struct uart_em32_data *data = dev->data;
 	struct elan_em32_clock_control_subsys apb_clk_subsys;
 	uint32_t apb_clk_rate = 0;
 	uint32_t bauddiv;
@@ -136,20 +136,20 @@ static int uart_elandev_init(const struct device *dev)
 	return 0;
 }
 
-#define UART_ELANDEV_INIT(index)                                                                   \
+#define UART_EM32_INIT(index)                                                                   \
 	PINCTRL_DT_INST_DEFINE(index);                                                             \
-	static struct uart_elandev_data uart_elandev_data_##index = {                              \
+	static struct uart_em32_data uart_em32_data_##index = {                              \
 		.baudrate = DT_INST_PROP(index, current_speed),                                    \
 	};                                                                                         \
                                                                                                    \
-	static const struct uart_elandev_config uart_elandev_config_##index = {                    \
+	static const struct uart_em32_config uart_em32_config_##index = {                    \
 		.base = DT_INST_REG_ADDR(index),                                                   \
 		.clock_dev = DEVICE_DT_GET(DT_INST_PHANDLE(index, clocks)),                        \
 		.pcfg = PINCTRL_DT_INST_DEV_CONFIG_GET(index),                                     \
 	};                                                                                         \
                                                                                                    \
-	DEVICE_DT_INST_DEFINE(index, uart_elandev_init, NULL, /* PM control */                     \
-			      &uart_elandev_data_##index, &uart_elandev_config_##index,            \
-			      PRE_KERNEL_1, CONFIG_SERIAL_INIT_PRIORITY, &uart_elandev_api);
+	DEVICE_DT_INST_DEFINE(index, uart_em32_init, NULL, /* PM control */                     \
+			      &uart_em32_data_##index, &uart_em32_config_##index,            \
+			      PRE_KERNEL_1, CONFIG_SERIAL_INIT_PRIORITY, &uart_em32_api);
 
-DT_INST_FOREACH_STATUS_OKAY(UART_ELANDEV_INIT)
+DT_INST_FOREACH_STATUS_OKAY(UART_EM32_INIT)

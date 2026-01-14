@@ -23,6 +23,7 @@
 };
 
 &uart1 {
+	compatible = "elan,em32-uart";
 	status = "okay";
 };
 

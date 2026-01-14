@@ -3,7 +3,7 @@
 
 description: ELAN 967 UART
 
-compatible: "elan,elandev-uart"
+compatible: "elan,em32-uart"
 
 include:
   - name: uart-controller.yaml
