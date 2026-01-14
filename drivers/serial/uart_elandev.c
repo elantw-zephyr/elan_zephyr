@@ -8,13 +8,17 @@
 #include "../../include/zephyr/drivers/clock_control/clock_control_em32_apb.h"
 #include <soc.h>
 
-#include "em32f967.h" /* TODO: remove em32f967.h */
-#include "soc_967.h" /* TODO: remove soc_967.h and elan_em32.h */
-
 #define _DEVICE_ID "elan967_uart_dev"
 
-#define UART_STATE_TX_BUSY_MASK BIT(0)
-#define UART_STATE_RX_RDY_MASK  BIT(1)
+#define UART_STATE_TX_BUSY_MASK    BIT(0)
+#define UART_STATE_RX_RDY_MASK     BIT(1)
+
+/* EM32 UART register offsets - corrected per spec */
+#define UART_DATA_OFFSET           0x00
+#define UART_STATE_OFFSET          0x04
+#define UART_CTRL_OFFSET           0x08
+#define UART_INTSTACLR_OFFSET      0x0C
+#define UART_BAUDDIV_OFFSET        0x10
 
 LOG_MODULE_REGISTER(elan967_uart_dev, CONFIG_UART_LOG_LEVEL);
 
@@ -28,40 +32,43 @@ struct uart_elandev_data {
 	uint32_t baudrate;
 };
 
+static inline uint32_t uart_em32_read(const struct device *dev, uint32_t offset)
+{
+	const struct uart_elandev_config *config = dev->config;
+	return sys_read32(config->base + offset);
+}
+
+static inline void uart_em32_write(const struct device *dev, uint32_t offset, uint32_t value)
+{
+	const struct uart_elandev_config *config = dev->config;
+	sys_write32(value, config->base + offset);
+}
+
 static int _uart_poll_in(const struct device *dev, unsigned char *p_char)
 {
-	const struct uart_elandev_config *cfg = dev->config;
-	UART_TypeDef *_uart_console = (UART_TypeDef *)cfg->base;
-
 	/* Check if RX data is available */
-	if (!(_uart_console->STATE_U.STATE & UART_STATE_RX_RDY_MASK)) {
+	if (!(uart_em32_read(dev, UART_STATE_OFFSET) & UART_STATE_RX_RDY_MASK)) {
 		return -1;
 	}
 
-	*p_char = _uart_console->DATA & 0xFF;
+	*p_char = uart_em32_read(dev, UART_DATA_OFFSET) & 0xFF;
 	return 0;
 }
 
 static void _uart_poll_out(const struct device *dev, unsigned char out_char)
 {
-	const struct uart_elandev_config *cfg = dev->config;
-	UART_TypeDef *_uart_console = (UART_TypeDef *)cfg->base;
-
 	/* Wait until TX is not busy */
-	while (_uart_console->STATE_U.STATE & UART_STATE_TX_BUSY_MASK) {
+	while (uart_em32_read(dev, UART_STATE_OFFSET) & UART_STATE_TX_BUSY_MASK) {
 		/* spin */
 		continue;
 	}
 
-	_uart_console->DATA = out_char;
+	uart_em32_write(dev, UART_DATA_OFFSET, out_char);
 }
 
 static int _uart_err_check(const struct device *dev)
 {
-	const struct uart_elandev_config *cfg = dev->config;
-	UART_TypeDef *_uart_console = (UART_TypeDef *)cfg->base;
-	uint32_t status = _uart_console->STATE_U.STATE;
-
+	uint32_t status = uart_em32_read(dev, UART_STATE_OFFSET);
 	int err = 0;
 
 	if (status & BIT(3)) { // RXBUFOVERRUN
@@ -87,9 +94,6 @@ static int uart_elandev_init(const struct device *dev)
 	uint32_t bauddiv;
 	uint32_t baudrate = data->baudrate;
 	int ret = 0;
-	UART_TypeDef *_uart_console = (UART_TypeDef *)cfg->base;
-
-	_uart_console = (UART_TypeDef *)(uint32_t)cfg->base;
 
 	/* Apply pinctrl configuration first so IOShare and IOMUX are set
 	 * before configuring UART registers. Some hardware requires the
@@ -122,12 +126,12 @@ static int uart_elandev_init(const struct device *dev)
 	LOG_DBG("baudrate=%d, bauddiv=%d.", baudrate, bauddiv);
 
 	if (bauddiv < 16) {
-		_uart_console->BAUDDIV = 16;
+		bauddiv = 16;
 	}
 
-	_uart_console->BAUDDIV = bauddiv;
-	_uart_console->INTSTACLR = 0xF;
-	_uart_console->CTRL = 3;
+	uart_em32_write(dev, UART_BAUDDIV_OFFSET, bauddiv);
+	uart_em32_write(dev, UART_INTSTACLR_OFFSET, 0xF);
+	uart_em32_write(dev, UART_CTRL_OFFSET, 0x3);
 
 	return 0;
 }
