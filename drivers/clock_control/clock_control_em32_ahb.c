@@ -12,12 +12,29 @@
 // #include <zephyr/drivers/clock_control/clock_control_em32_ahb.h>
 #include "../../include/zephyr/drivers/clock_control/clock_control_em32_ahb.h"
 
-#include "em32f967.h" /* TODO: remove em32f967.h */
-#include "soc_967.h" /* TODO: remove soc_967.h and elan_em32.h */
+#include "soc_sysctrl.h"
+#include "soc_clkctrl.h"
 
 #define LOG_LEVEL LOG_LEVEL_DBG
 #include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(em32_ahb);
+
+#if 1 /* temp, will move to include file */
+/* Register Base */
+#define MIRC_BASE		0x100a0000
+
+/* Register Offsets */
+#define MIRC_12M_R_2_OFF 0x7f60
+#define MIRC_16M_2_OFF   0x6070
+#define MIRC_20M_2_OFF   0x6074
+#define MIRC_24M_2_OFF   0x6078
+#define MIRC_28M_2_OFF   0x607c
+#define MIRC_32M_2_OFF   0x6080
+
+/* Field Masks for MIRC_CTRL */
+#define MIRC_TALL_MASK  GENMASK(9, 0)     /* [9:0]    MIRC_Tall */
+#define MIRC_TV12_MASK  GENMASK(12, 10)   /* [12:10]  MIRC_TV12 */
+#endif /* temp, will move to include file */
 
 /*
  * Configurations
@@ -42,14 +59,50 @@ void delay_100us(void)
 	_z_nop_delay(ahb_count / 100);
 }
 
-uint32_t elan_em32_get_ahb_freq(void)
+static inline uint32_t ahb_em32_read_field(uint32_t base, uint32_t offset, uint32_t mask)
 {
+	uint32_t reg = 0;
+
+	reg = sys_read32(base + offset);
+
+	return FIELD_GET(mask, reg);
+}
+
+static inline void ahb_em32_write_field(uint32_t base, uint32_t offset,
+					uint32_t mask, uint32_t value)
+{
+	uint32_t reg = 0;
+
+	//LOG_DBG("base=0x%x offset=0x%x mask=0x%x value=0x%x", base, offset, mask, value);
+
+	/* Optional: check value range */
+	if ((value << __builtin_ctz(mask)) & ~mask) {
+		LOG_ERR("Value 0x%x exceeds field mask 0x%x", value, mask);
+		return;
+	}
+
+	reg = sys_read32(base + offset);
+	//LOG_DBG("reg-read=0x%x", reg);
+	reg &= ~mask;
+	//LOG_DBG("reg-~mask=0x%x", reg);
+	reg |= FIELD_PREP(mask, value);
+	//LOG_DBG("reg-FIELD_PREP=0x%x", reg);
+	sys_write32(reg, base + offset);
+}
+
+uint32_t elan_em32_get_ahb_freq(const struct device *dev)
+{
+	const struct elan_em32_ahb_clock_control_config *config = dev->config;
+	mm_reg_t sysctrl_base = config->sysctrl_base;
+	mm_reg_t clkctrl_base = config->clkctrl_base;
 	uint32_t irc_freq = 0;
 	uint32_t irc_pll_freq = 0;
 	uint32_t main_freq = 0;
 	uint32_t ahb_freq = 0;
 
-	switch (MIRCCTRL->MIRCRCM) {
+	uint32_t mirc_rcm = ahb_em32_read_field(clkctrl_base,
+					CLKCTRL_MIRC_CTRL_OFF, CLKCTRL_MIRC_RCM_MASK);
+	switch (mirc_rcm) {
 	case 0x00:
 		irc_freq = 12000;
 		irc_pll_freq = 12000 * 16 / 2;
@@ -78,13 +131,17 @@ uint32_t elan_em32_get_ahb_freq(void)
 		break;
 	}
 
-	switch (SYSREGCTRL->HCLKSEL & 0x03) {
+	uint32_t hclk_sel = ahb_em32_read_field(sysctrl_base,
+					SYSCTRL_SYS_REG_CTRL_OFF, SYSCTRL_HCLK_SEL_MASK);
+	switch (hclk_sel) {
 	case 0x00: {
 		main_freq = irc_freq;
 	} break;
 
 	case 0x01: {
-		if (SYSREGCTRL->XTALHIRCSEL) {
+		uint32_t xtal_hirc_sel = ahb_em32_read_field(sysctrl_base,
+						SYSCTRL_SYS_REG_CTRL_OFF, SYSCTRL_XTAL_HIRC_SEL);
+		if (xtal_hirc_sel) {
 			main_freq = 24000 * 5;
 		} else {
 			main_freq = irc_pll_freq;
@@ -100,7 +157,9 @@ uint32_t elan_em32_get_ahb_freq(void)
 	} break;
 	}
 
-	main_freq = main_freq >> (SYSREGCTRL->HCLKDIV);
+	uint32_t hclk_div = ahb_em32_read_field(sysctrl_base,
+					SYSCTRL_SYS_REG_CTRL_OFF, SYSCTRL_HCLK_DIV_MASK);
+	main_freq = main_freq >> (hclk_div);
 	ahb_freq = main_freq;
 
 	return ahb_freq;
@@ -120,30 +179,48 @@ void elan_em32_clk_gating_disable(CLKGatingSwitch GatingN)
 	return;
 }
 
-void elan_em32_set_ahb_freq(ClockSource clk_src, Freq1Source freq_src, AHBPreScaler pre_div)
+void elan_em32_set_ahb_freq(const struct device *dev)
 {
+	const struct elan_em32_ahb_clock_control_config *config = dev->config;
+	mm_reg_t sysctrl_base = config->sysctrl_base;
+	mm_reg_t clkctrl_base = config->clkctrl_base;
+	ClockSource clk_src = config->clock_source;
+	Freq1Source freq_src = config->clock_frequency;
+	AHBPreScaler pre_div = config->clock_divider;
 	bool bPLL = 0;
+
+	LOG_DBG("clock_source=0x%x, clock_frequency=0x%x, clock_divider=0x%x.", clk_src, freq_src,
+		pre_div);
 
 	elan_em32_clk_gating_disable(PCLKG_AIP);
 
 	if (freq_src == IRCLOW12 /* irc_freq_src */) {
-		SYSREGCTRL->HCLKDIV = pre_div;
+		ahb_em32_write_field(sysctrl_base, SYSCTRL_SYS_REG_CTRL_OFF,
+					SYSCTRL_HCLK_DIV_MASK, pre_div);
 		return;
 	}
 
-	MISCREGCTRL->WaitCountPass = 0x0a;
-	MISCREGCTRL->WaitCount = 3;
-	MISCREGCTRL->WaitCountSet = 1;
+	ahb_em32_write_field(sysctrl_base, SYSCTRL_MISC_REG_CTRL_OFF,
+				SYSCTRL_WAIT_COUNT_PASS_MASK, 0x0a);
+	ahb_em32_write_field(sysctrl_base, SYSCTRL_MISC_REG_CTRL_OFF,
+				SYSCTRL_WAIT_COUNT_MASK, 0x03);
+	ahb_em32_write_field(sysctrl_base, SYSCTRL_MISC_REG_CTRL_OFF,
+				SYSCTRL_WAIT_COUNT_SET, 0x01);
 
-	if (SYSREGCTRL->HCLKSEL == 0x01) {
-		SYSREGCTRL->HCLKSEL = 0x00;
+	uint32_t hclk_sel = ahb_em32_read_field(sysctrl_base,
+					SYSCTRL_SYS_REG_CTRL_OFF, SYSCTRL_HCLK_SEL_MASK);
+	if (hclk_sel == 0x01) {
+		ahb_em32_write_field(sysctrl_base, SYSCTRL_SYS_REG_CTRL_OFF,
+					SYSCTRL_HCLK_SEL_MASK, 0x00);
 		delay_100us();
-		SYSPLLCTRL->SYSPLLPD = 1;
+		ahb_em32_write_field(clkctrl_base, CLKCTRL_SYS_PLL_CTRL_OFF,
+					CLKCTRL_SYS_PLL_PD, 0x01);
 		_z_nop_delay(10);
 	}
 
 	if (clk_src == External1) {
-		SYSREGCTRL->HCLKSEL = 0x02;
+		ahb_em32_write_field(sysctrl_base, SYSCTRL_SYS_REG_CTRL_OFF,
+					SYSCTRL_HCLK_SEL_MASK, 0x02);
 	} else {
 		if (freq_src >> 4) {
 			bPLL = 1;
@@ -151,40 +228,77 @@ void elan_em32_set_ahb_freq(ClockSource clk_src, Freq1Source freq_src, AHBPreSca
 			bPLL = 0;
 		}
 
+		uint32_t mirc_tall, mirc_tv12;
 		switch (freq_src) {
 		case IRCLOW12:
-			MIRCCTRL_2->MIRCTall = MIRC12M_R_2->MIRC_Tall;
-			MIRCCTRL_2->MIRCTV12 = ~MIRC12M_R_2->MIRC_TV12;
+			mirc_tall = ahb_em32_read_field(MIRC_BASE,
+							MIRC_12M_R_2_OFF, MIRC_TALL_MASK);
+			mirc_tv12 = ahb_em32_read_field(MIRC_BASE,
+							MIRC_12M_R_2_OFF, MIRC_TV12_MASK);
+			ahb_em32_write_field(clkctrl_base, CLKCTRL_MIRC_CTRL2_OFF,
+						CLKCTRL_MIRC2_TALL_MASK, (mirc_tall & 0x3FF));
+			ahb_em32_write_field(clkctrl_base, CLKCTRL_MIRC_CTRL2_OFF,
+						CLKCTRL_MIRC2_TV12_MASK, (~mirc_tv12 & 0x7));
 			break;
 
 		case IRCLOW16:
 		case IRCHIGH64:
-			MIRCCTRL_2->MIRCTall = MIRC16M_2->MIRC_Tall;
-			MIRCCTRL_2->MIRCTV12 = ~MIRC16M_2->MIRC_TV12;
+			mirc_tall = ahb_em32_read_field(MIRC_BASE,
+							MIRC_16M_2_OFF, MIRC_TALL_MASK);
+			mirc_tv12 = ahb_em32_read_field(MIRC_BASE,
+							MIRC_16M_2_OFF, MIRC_TV12_MASK);
+			ahb_em32_write_field(clkctrl_base, CLKCTRL_MIRC_CTRL2_OFF,
+						CLKCTRL_MIRC2_TALL_MASK, (mirc_tall & 0x3FF));
+			ahb_em32_write_field(clkctrl_base, CLKCTRL_MIRC_CTRL2_OFF,
+						CLKCTRL_MIRC2_TV12_MASK, (~mirc_tv12 & 0x7));
 			break;
 
 		case IRCLOW20:
 		case IRCHIGH80:
-			MIRCCTRL_2->MIRCTall = MIRC20M_2->MIRC_Tall;
-			MIRCCTRL_2->MIRCTV12 = ~MIRC20M_2->MIRC_TV12;
+			mirc_tall = ahb_em32_read_field(MIRC_BASE,
+							MIRC_20M_2_OFF, MIRC_TALL_MASK);
+			mirc_tv12 = ahb_em32_read_field(MIRC_BASE,
+							MIRC_20M_2_OFF, MIRC_TV12_MASK);
+			ahb_em32_write_field(clkctrl_base, CLKCTRL_MIRC_CTRL2_OFF,
+						CLKCTRL_MIRC2_TALL_MASK, (mirc_tall & 0x3FF));
+			ahb_em32_write_field(clkctrl_base, CLKCTRL_MIRC_CTRL2_OFF,
+						CLKCTRL_MIRC2_TV12_MASK, (~mirc_tv12 & 0x7));
 			break;
 
 		case IRCLOW24:
 		case IRCHIGH96:
-			MIRCCTRL_2->MIRCTall = MIRC24M_2->MIRC_Tall;
-			MIRCCTRL_2->MIRCTV12 = ~MIRC24M_2->MIRC_TV12;
+			mirc_tall = ahb_em32_read_field(MIRC_BASE,
+							MIRC_24M_2_OFF, MIRC_TALL_MASK);
+			mirc_tv12 = ahb_em32_read_field(MIRC_BASE,
+							MIRC_24M_2_OFF, MIRC_TV12_MASK);
+			ahb_em32_write_field(clkctrl_base, CLKCTRL_MIRC_CTRL2_OFF,
+						CLKCTRL_MIRC2_TALL_MASK, (mirc_tall & 0x3FF));
+			ahb_em32_write_field(clkctrl_base, CLKCTRL_MIRC_CTRL2_OFF,
+						CLKCTRL_MIRC2_TV12_MASK, (~mirc_tv12 & 0x7));
 			break;
 
 		case IRCLOW28:
 		case IRCHIGH112:
-			MIRCCTRL_2->MIRCTall = MIRC28M_2->MIRC_Tall;
-			MIRCCTRL_2->MIRCTV12 = ~MIRC28M_2->MIRC_TV12;
+			mirc_tall = ahb_em32_read_field(MIRC_BASE,
+							MIRC_28M_2_OFF, MIRC_TALL_MASK);
+			mirc_tv12 = ahb_em32_read_field(MIRC_BASE,
+							MIRC_28M_2_OFF, MIRC_TV12_MASK);
+			ahb_em32_write_field(clkctrl_base, CLKCTRL_MIRC_CTRL2_OFF,
+						CLKCTRL_MIRC2_TALL_MASK, (mirc_tall & 0x3FF));
+			ahb_em32_write_field(clkctrl_base, CLKCTRL_MIRC_CTRL2_OFF,
+						CLKCTRL_MIRC2_TV12_MASK, (~mirc_tv12 & 0x7));
 			break;
 
 		case IRCLOW32:
 		case IRCHIGH128:
-			MIRCCTRL_2->MIRCTall = MIRC32M_2->MIRC_Tall;
-			MIRCCTRL_2->MIRCTV12 = ~MIRC32M_2->MIRC_TV12;
+			mirc_tall = ahb_em32_read_field(MIRC_BASE,
+							MIRC_32M_2_OFF, MIRC_TALL_MASK);
+			mirc_tv12 = ahb_em32_read_field(MIRC_BASE,
+							MIRC_32M_2_OFF, MIRC_TV12_MASK);
+			ahb_em32_write_field(clkctrl_base, CLKCTRL_MIRC_CTRL2_OFF,
+						CLKCTRL_MIRC2_TALL_MASK, (mirc_tall & 0x3FF));
+			ahb_em32_write_field(clkctrl_base, CLKCTRL_MIRC_CTRL2_OFF,
+						CLKCTRL_MIRC2_TV12_MASK, (~mirc_tv12 & 0x7));
 			break;
 
 		default:
@@ -192,63 +306,83 @@ void elan_em32_set_ahb_freq(ClockSource clk_src, Freq1Source freq_src, AHBPreSca
 		}
 
 		delay_100us();
-		MIRCCTRL->MIRCRCM = (freq_src & 0x0f);
-		SYSREGCTRL->XTALHIRCSEL = 0;
+		ahb_em32_write_field(clkctrl_base, CLKCTRL_MIRC_CTRL_OFF,
+					CLKCTRL_MIRC_RCM_MASK, (freq_src & 0x0f));
+		ahb_em32_write_field(sysctrl_base, SYSCTRL_SYS_REG_CTRL_OFF,
+					SYSCTRL_XTAL_HIRC_SEL, 0x00);
 
 		if (bPLL) {
 			switch (freq_src) {
 			case IRCHIGH64:
-				SYSPLLCTRL->SYSPLLFSET = 0;
+				ahb_em32_write_field(clkctrl_base, CLKCTRL_SYS_PLL_CTRL_OFF,
+							CLKCTRL_SYS_PLL_FSET_MASK, 0x00);
 				break;
 			case IRCHIGH80:
-				SYSPLLCTRL->SYSPLLFSET = 1;
+				ahb_em32_write_field(clkctrl_base, CLKCTRL_SYS_PLL_CTRL_OFF,
+							CLKCTRL_SYS_PLL_FSET_MASK, 0x01);
 				break;
 			case IRCHIGH96:
-				SYSPLLCTRL->SYSPLLFSET = 2;
+				ahb_em32_write_field(clkctrl_base, CLKCTRL_SYS_PLL_CTRL_OFF,
+							CLKCTRL_SYS_PLL_FSET_MASK, 0x02);
 				break;
 			case IRCHIGH112:
-				SYSPLLCTRL->SYSPLLFSET = 3;
+				ahb_em32_write_field(clkctrl_base, CLKCTRL_SYS_PLL_CTRL_OFF,
+							CLKCTRL_SYS_PLL_FSET_MASK, 0x03);
 				break;
 			case IRCHIGH128:
-				SYSPLLCTRL->SYSPLLFSET = 3;
+				ahb_em32_write_field(clkctrl_base, CLKCTRL_SYS_PLL_CTRL_OFF,
+							CLKCTRL_SYS_PLL_FSET_MASK, 0x03);
 				break;
 			default:
 				break;
 			}
 
-			LDOPLL->PLLLDO_PD = 0;
+			ahb_em32_write_field(clkctrl_base, CLKCTRL_LDO_PLL_OFF,
+						CLKCTRL_PLL_LDO_PD, 0x00);
 			_z_nop_delay(10);
 			_z_nop_delay(10);
-			LDOPLL->PLLLDO_VP_SEL = 0;
+			ahb_em32_write_field(clkctrl_base, CLKCTRL_LDO_PLL_OFF,
+						CLKCTRL_PLL_LDO_VP_SEL, 0x00);
 			delay_10us();
 			delay_10us();
-			SYSPLLCTRL->SYSPLLPD = 0;
+			ahb_em32_write_field(clkctrl_base, CLKCTRL_SYS_PLL_CTRL_OFF,
+						CLKCTRL_SYS_PLL_PD, 0x00);
 			_z_nop_delay(10);
-			while (SYSPLLCTRL->SYSPLLSTABLE == 0)
+			while (ahb_em32_read_field(clkctrl_base,
+						   CLKCTRL_SYS_PLL_CTRL_OFF,
+						   CLKCTRL_SYS_PLL_STABLE) == 0)
 				;
 			_z_nop_delay(10);
-			SYSREGCTRL->HCLKSEL = 0x01;
+			ahb_em32_write_field(sysctrl_base, SYSCTRL_SYS_REG_CTRL_OFF,
+						SYSCTRL_HCLK_SEL_MASK, 0x01);
 			_z_nop_delay(10);
 		} else {
-			SYSREGCTRL->HCLKSEL = 0x00;
+			ahb_em32_write_field(sysctrl_base, SYSCTRL_SYS_REG_CTRL_OFF,
+						SYSCTRL_HCLK_SEL_MASK, 0x00);
 			delay_100us();
-			SYSPLLCTRL->SYSPLLPD = 1;
+			ahb_em32_write_field(clkctrl_base, CLKCTRL_SYS_PLL_CTRL_OFF,
+						CLKCTRL_SYS_PLL_PD, 0x01);
 		}
 
 		irc_freq_src = freq_src;
 	}
 
 	if (pre_div == DIV128) {
-		SYSREGCTRL->HCLKDIV = (pre_div - 1);
+		ahb_em32_write_field(sysctrl_base, SYSCTRL_SYS_REG_CTRL_OFF,
+					SYSCTRL_HCLK_DIV_MASK, (pre_div - 1));
 	} else {
-		SYSREGCTRL->HCLKDIV = (pre_div + 1);
+		ahb_em32_write_field(sysctrl_base, SYSCTRL_SYS_REG_CTRL_OFF,
+					SYSCTRL_HCLK_DIV_MASK, (pre_div + 1));
 	}
 
-	MISCREGCTRL->WaitCountSet = 0;
-	MISCREGCTRL->WaitCountPass = 0;
-	SYSREGCTRL->HCLKDIV = pre_div;
+	ahb_em32_write_field(sysctrl_base, SYSCTRL_MISC_REG_CTRL_OFF,
+				SYSCTRL_WAIT_COUNT_SET, 0x00);
+	ahb_em32_write_field(sysctrl_base, SYSCTRL_MISC_REG_CTRL_OFF,
+				SYSCTRL_WAIT_COUNT_PASS_MASK, 0x00);
+	ahb_em32_write_field(sysctrl_base, SYSCTRL_SYS_REG_CTRL_OFF,
+				SYSCTRL_HCLK_DIV_MASK, pre_div);
 
-	ahb_count = elan_em32_get_ahb_freq();
+	ahb_count = elan_em32_get_ahb_freq(dev);
 	LOG_DBG("ahb_count=%d.", ahb_count);
 
 	return;
@@ -284,7 +418,7 @@ static int elan_em32_ahb_clock_control_get_rate(const struct device *dev,
 {
 	int ahb_clk_rate = 0;
 
-	ahb_clk_rate = elan_em32_get_ahb_freq() * 1000; // unit: 1000 Hz
+	ahb_clk_rate = elan_em32_get_ahb_freq(dev) * 1000; // unit: 1000 Hz
 	// LOG_DBG("ahb_clk_rate=%d (Hz).", ahb_clk_rate);
 
 	*rate = ahb_clk_rate;
@@ -300,20 +434,14 @@ static DEVICE_API(clock_control, elan_em32_ahb_clock_control_api) = {
 
 static int elan_em32_ahb_clock_control_init(const struct device *dev)
 {
-	const struct elan_em32_ahb_clock_control_config *config = dev->config;
-	ClockSource clk_src = config->clock_source;
-	Freq1Source clk_freq = config->clock_frequency;
-	AHBPreScaler clk_div = config->clock_divider;
-	LOG_DBG("clock_source=0x%x, clock_frequency=0x%x, clock_divider=0x%x.", clk_src, clk_freq,
-		clk_div);
-
-	// Set AHB Clock
-	elan_em32_set_ahb_freq(clk_src, clk_freq, clk_div);
+	elan_em32_set_ahb_freq(dev);
 
 	return 0;
 }
 
 static const struct elan_em32_ahb_clock_control_config em32_ahb_config = {
+	.sysctrl_base = DT_REG_ADDR(SYSCTRL_DT_NODE),
+	.clkctrl_base = DT_REG_ADDR(CLKCTRL_DT_NODE),
 	.clock_source = DT_PROP(DT_NODELABEL(clk_ahb), clock_source),
 	.clock_frequency = DT_PROP(DT_NODELABEL(clk_ahb), clock_frequency),
 	.clock_divider = DT_PROP(DT_NODELABEL(clk_ahb), clock_divider),

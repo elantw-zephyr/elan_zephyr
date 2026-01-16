@@ -56,6 +56,8 @@ typedef enum {
  */
 
 struct elan_em32_ahb_clock_control_config {
+	mm_reg_t sysctrl_base;
+	mm_reg_t clkctrl_base;
 	uint32_t clock_source;
 	uint32_t clock_frequency;
 	uint32_t clock_divider;
