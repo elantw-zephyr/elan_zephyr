@@ -9,15 +9,13 @@
 #include <zephyr/device.h>
 #include <zephyr/devicetree.h>
 #include <zephyr/drivers/clock_control.h>
-// #include <zephyr/drivers/clock_control/clock_control_em32_ahb.h>
-#include "../../include/zephyr/drivers/clock_control/clock_control_em32_ahb.h"
+#include <zephyr/drivers/clock_control/clock_control_em32_ahb.h>
 
-#include "soc_sysctrl.h"
-#include "soc_clkctrl.h"
-
-#define LOG_LEVEL LOG_LEVEL_DBG
 #include <zephyr/logging/log.h>
-LOG_MODULE_REGISTER(em32_ahb);
+LOG_MODULE_REGISTER(em32_ahb, CONFIG_LOG_DEFAULT_LEVEL);
+
+#include "soc_clkctrl.h"
+#include "soc_sysctrl.h"
 
 #if 1 /* temp, will move to include file */
 /* Register Base */
