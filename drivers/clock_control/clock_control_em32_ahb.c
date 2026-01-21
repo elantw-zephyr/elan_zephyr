@@ -29,6 +29,9 @@ LOG_MODULE_REGISTER(em32_ahb, CONFIG_LOG_DEFAULT_LEVEL);
 #define MIRC_28M_2_OFF   0x607c
 #define MIRC_32M_2_OFF   0x6080
 
+#define CLKCTRL_CLK_GATE_REG_OFF   0x0100
+#define CLKCTRL_CLK_GATE_REG2_OFF   0x0104
+
 /* Field Masks for MIRC_CTRL */
 #define MIRC_TALL_MASK  GENMASK(9, 0)     /* [9:0]    MIRC_Tall */
 #define MIRC_TV12_MASK  GENMASK(12, 10)   /* [12:10]  MIRC_TV12 */
@@ -142,7 +145,7 @@ static inline uint32_t ahb_em32_read_field(uint32_t base, uint32_t offset, uint3
 	return FIELD_GET(mask, reg);
 }
 
-static inline void ahb_em32_write_field(uint32_t base, uint32_t offset,
+static inline void ahb_em32_write_field(mm_reg_t base, uint32_t offset,
 					uint32_t mask, uint32_t value)
 {
 	uint32_t reg = 0;
@@ -157,6 +160,64 @@ static inline void ahb_em32_write_field(uint32_t base, uint32_t offset,
 	reg &= ~mask;
 	reg |= FIELD_PREP(mask, value);
 	sys_write32(reg, base + offset);
+}
+
+/* Gate value semantics for readability. */
+enum em32_gate_val {
+	EM32_GATE_OPEN   = 0u,	/* clear bit -> clock enabled */
+	EM32_GATE_CLOSED = 1u,	/* set bit   -> clock gated   */
+};
+
+static inline bool em32_gate_is_all(uint32_t gate_idx)
+{
+	return (gate_idx == (uint32_t)PCLKG_ALL);
+}
+
+static inline bool em32_gate_is_valid(uint32_t gate_idx)
+{
+	/* Valid when in [0..63] or the ALL marker is used. */
+	return (gate_idx <= 63u) || em32_gate_is_all(gate_idx);
+}
+
+/*
+ * Write a single gate bit using the unified field RMW helper.
+ * For ALL, only EM32_GATE_OPEN is accepted (open all clocks).
+ * Closing ALL clocks is rejected as unsafe.
+ */
+static inline void em32_clk_gate_write(mm_reg_t base, uint32_t gate_idx,
+					enum em32_gate_val val)
+{
+	if (!em32_gate_is_valid(gate_idx)) {
+		LOG_ERR("Gate index %u out of range", gate_idx);
+		return;
+	}
+
+	if (em32_gate_is_all(gate_idx)) {
+		if (val == EM32_GATE_OPEN) {
+			sys_write32((uint32_t)EM32_GATE_OPEN, base + CLKCTRL_CLK_GATE_REG_OFF);
+			sys_write32((uint32_t)EM32_GATE_OPEN, base + CLKCTRL_CLK_GATE_REG2_OFF);
+		} else {
+			/* Reject closing all gates to avoid system shutdown. */
+			LOG_WRN("Closing ALL gates is not supported");
+		}
+		return;
+	}
+
+	uint32_t bit = (gate_idx <= 31u) ? gate_idx : (gate_idx - 32u);
+	uint32_t off = (gate_idx <= 31u) ? CLKCTRL_CLK_GATE_REG_OFF
+					 : CLKCTRL_CLK_GATE_REG2_OFF;
+
+	ahb_em32_write_field(base, off, BIT(bit), (uint32_t)val);
+}
+
+static inline void em32_clk_gate_open(mm_reg_t base, uint32_t gate_idx)
+{
+	em32_clk_gate_write(base, gate_idx, EM32_GATE_OPEN);
+}
+
+static inline void em32_clk_gate_close(mm_reg_t base, uint32_t gate_idx)
+{
+	em32_clk_gate_write(base, gate_idx, EM32_GATE_CLOSED);
 }
 
 uint32_t elan_em32_get_ahb_freq(const struct device *dev)
@@ -234,20 +295,6 @@ uint32_t elan_em32_get_ahb_freq(const struct device *dev)
 	return ahb_freq;
 }
 
-void elan_em32_clk_gating_disable(CLKGatingSwitch GatingN)
-{
-	if (GatingN == PCLKG_ALL) {
-		CLKGATEREG = 0;
-		CLKGATEREG2 = 0;
-	} else if (GatingN <= 31) {
-		CLKGATEREG &= ~(0x01 << GatingN);
-	} else {
-		CLKGATEREG2 &= ~(0x01 << (GatingN - 32));
-	}
-
-	return;
-}
-
 void elan_em32_set_ahb_freq(const struct device *dev)
 {
 	const struct elan_em32_ahb_clock_control_config *config = dev->config;
@@ -261,7 +308,7 @@ void elan_em32_set_ahb_freq(const struct device *dev)
 	LOG_DBG("clock_source=0x%x, clock_frequency=0x%x, clock_divider=0x%x.", clk_src, freq_src,
 		pre_div);
 
-	elan_em32_clk_gating_disable(PCLKG_AIP);
+	em32_clk_gate_open(sysctrl_base, PCLKG_AIP);
 
 	if (freq_src == IRCLOW12 /* irc_freq_src */) {
 		ahb_em32_write_field(sysctrl_base, SYSCTRL_SYS_REG_CTRL_OFF,
@@ -455,40 +502,58 @@ void elan_em32_set_ahb_freq(const struct device *dev)
 	return;
 }
 
-static int elan_em32_ahb_clock_control_on(const struct device *dev, clock_control_subsys_t sys)
+static int elan_em32_ahb_clock_control_on(const struct device *dev,
+					  clock_control_subsys_t sys)
 {
+	const struct elan_em32_ahb_clock_control_config *cfg = dev->config;
 	struct elan_em32_clock_control_subsys *subsys =
 		(struct elan_em32_clock_control_subsys *)sys;
-	int ret = 0;
 	uint32_t clk_grp = subsys->clock_group;
 	// LOG_DBG("clock_group=%d.", clk_grp);
 
-	if (((clk_grp >= HCLKG_DMA) &&
-	     (clk_grp <= PCLKG_SSP1) /* HCLKG_DMA <= clk_grp <= PCLKG_SSP1 */) ||
-	    (clk_grp == PCLKG_ALL)) {
-		elan_em32_clk_gating_disable((CLKGatingSwitch)clk_grp);
-	} else {
-		LOG_ERR("Unknown clock group #%d", clk_grp);
-		ret = -EINVAL;
+	/* Accept known indices and the ALL marker. */
+	if (((clk_grp >= HCLKG_DMA) && (clk_grp <= PCLKG_SSP1)) ||
+		(clk_grp == PCLKG_ALL)) {
+		/* Enabling a clock == open gate (clear the bit). */
+		em32_clk_gate_open(cfg->sysctrl_base, clk_grp);
+		return 0;
 	}
 
-	return ret;
+	LOG_ERR("Unknown clock group #%u", clk_grp);
+	return -EINVAL;
 }
 
-static int elan_em32_ahb_clock_control_off(const struct device *dev, clock_control_subsys_t sys)
+static int elan_em32_ahb_clock_control_off(const struct device *dev,
+					   clock_control_subsys_t sys)
 {
-	return -ENOTSUP;
+	const struct elan_em32_ahb_clock_control_config *cfg = dev->config;
+	struct elan_em32_clock_control_subsys *subsys =
+		(struct elan_em32_clock_control_subsys *)sys;
+	uint32_t clk_grp = subsys->clock_group;
+	// LOG_DBG("clock_group=%d.", clk_grp);
+
+	/* Do not support closing ALL clocks; reject explicitly. */
+	if (clk_grp == PCLKG_ALL) {
+		return -ENOTSUP;
+	}
+
+	if ((clk_grp >= HCLKG_DMA) && (clk_grp <= PCLKG_SSP1)) {
+		/* Disabling a clock == close gate (set the bit). */
+		em32_clk_gate_close(cfg->sysctrl_base, clk_grp);
+		return 0;
+	}
+
+	LOG_ERR("Unknown clock group #%u", clk_grp);
+	return -EINVAL;
 }
 
 static int elan_em32_ahb_clock_control_get_rate(const struct device *dev,
 						clock_control_subsys_t sys, uint32_t *rate)
 {
-	int ahb_clk_rate = 0;
-
-	ahb_clk_rate = elan_em32_get_ahb_freq(dev) * 1000; // unit: 1000 Hz
-	// LOG_DBG("ahb_clk_rate=%d (Hz).", ahb_clk_rate);
-
-	*rate = ahb_clk_rate;
+	/* elan_em32_get_ahb_freq(dev) returns kHz; convert to Hz. */
+	uint32_t ahb_khz = elan_em32_get_ahb_freq(dev);
+	*rate = ahb_khz * 1000u;
+	// LOG_DBG("rate=%d (Hz).", *rate);
 
 	return 0;
 }
@@ -547,8 +612,8 @@ static int delay_switch_to_late_post_init(void)
 
 /* Enforce ordering: switch must run after system clock is initialized. */
 BUILD_ASSERT(CONFIG_EM32_DELAY_SWITCH_PRIORITY >
-         CONFIG_SYSTEM_CLOCK_INIT_PRIORITY,
-         "delay switch priority must be greater than system clock priority");
+	     CONFIG_SYSTEM_CLOCK_INIT_PRIORITY,
+	     "delay switch priority must be greater than system clock priority");
 
 /*
  * Switch the delay backend at POST_KERNEL so that k_busy_wait() and other

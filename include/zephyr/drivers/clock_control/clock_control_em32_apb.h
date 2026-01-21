@@ -8,7 +8,9 @@
 #define __ZEPHYR_INCLUDE_DRIVERS_CLOCK_CONTROL_EM32_APB_H__
 
 #include <stdint.h>
-#include "clock_control_em32_ahb.h"
+//#include "clock_control_em32_ahb.h"
+#include <zephyr/drivers/clock_control/clock_control_em32_ahb.h>
+
 
 /*
  * Data Structure
