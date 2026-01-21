@@ -72,6 +72,7 @@ struct elan_em32_clock_control_subsys {
  */
  
 void delay_10us(void);
+void delay_1us(void);
 void delay_100us(void);
 
 #endif //__ZEPHYR_INCLUDE_DRIVERS_CLOCK_CONTROL_EM32_AHB_H__

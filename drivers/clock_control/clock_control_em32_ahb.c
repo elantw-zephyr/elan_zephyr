@@ -41,22 +41,98 @@ LOG_MODULE_REGISTER(em32_ahb);
  */
 __IO static uint32_t irc_freq_src = IRCLOW12;
 static uint32_t ahb_count = 12000; // 12M Hz
+static bool g_dwt_ok = false;
 
-static void _z_nop_delay(uint32_t cnt)
+static inline void early_delay_us(uint32_t us)
 {
-	for (uint32_t i = 0; i < cnt; i++) {
-		__asm volatile("nop");
+	if (g_dwt_ok) {
+		/*
+		 * Use DWT cycle counter for early busy-wait delays.
+		 *
+		 * This requires the effective core frequency (SystemCoreClock or an
+		 * equivalent) to be in sync with the active clock configuration.
+		 * Accuracy depends on that value being correct.
+		 */
+		uint64_t hz = ahb_count * 1000;
+		uint32_t cycles = (uint32_t)((hz * us) / 1000000ULL);
+		uint32_t start = DWT->CYCCNT;
+
+		while ((uint32_t)(DWT->CYCCNT - start) < cycles) {
+			/* Busy-wait */
+		}
+	} else {
+		/*
+		 * Fallback implementation using a minimal NOP loop.
+		 *
+		 * Intended only to add a tiny gap between back-to-back register
+		 * writes when DWT is unavailable. This is not an accurate µs delay.
+		 */
+		for (volatile uint32_t i = 0;
+			 i < (ahb_count / 1000) * (us / 10u ? us / 10u : 1u);
+			 i++) {
+			__asm volatile("nop");
+		}
 	}
 }
 
-void delay_10us(void)
+/*
+ * Late-stage delay using Zephyr timing services.
+ *
+ * After the kernel time base is ready, k_busy_wait() provides a calibrated,
+ * clock-aware busy wait and should be preferred to ad-hoc loops.
+ */
+static inline void late_delay_us(uint32_t us)
 {
-	_z_nop_delay(ahb_count / 1000);
+	k_busy_wait(us);
 }
 
+/*
+ * Delay backend indirection.
+ *
+ * Default to the early implementation until the kernel timing subsystem
+ * becomes available; then switch to the late path.
+ */
+static void (*delay_us_impl)(uint32_t us) = early_delay_us;
+
+/**
+ * @brief Busy-wait for at least @p us microseconds.
+ *
+ * Abstracts the underlying delay mechanism. During early boot it uses a
+ * DWT-based implementation and switches to k_busy_wait() after kernel init.
+ *
+ * Notes:
+ * - Suitable for early clock/power sequencing.
+ * - Acceptable for short delays in ISRs.
+ * - Avoid long busy-waits; prefer polling with timeout or
+ *   k_sleep()/k_msleep() when scheduling is possible.
+ */
+static inline void delay_us(uint32_t us)
+{
+	delay_us_impl(us);
+}
+
+/**
+ * @deprecated Use delay_us(1).
+ */
+void delay_1us(void)
+{
+	delay_us(1);
+}
+
+/**
+ * @deprecated Use delay_us(10).
+ */
+void delay_10us(void)
+{
+	delay_us(10);
+}
+
+/**
+ * @deprecated Use delay_us(100).
+ */
 void delay_100us(void)
 {
-	_z_nop_delay(ahb_count / 100);
+	delay_us(100);
 }
 
 static inline uint32_t ahb_em32_read_field(uint32_t base, uint32_t offset, uint32_t mask)
@@ -73,8 +149,6 @@ static inline void ahb_em32_write_field(uint32_t base, uint32_t offset,
 {
 	uint32_t reg = 0;
 
-	//LOG_DBG("base=0x%x offset=0x%x mask=0x%x value=0x%x", base, offset, mask, value);
-
 	/* Optional: check value range */
 	if ((value << __builtin_ctz(mask)) & ~mask) {
 		LOG_ERR("Value 0x%x exceeds field mask 0x%x", value, mask);
@@ -82,11 +156,8 @@ static inline void ahb_em32_write_field(uint32_t base, uint32_t offset,
 	}
 
 	reg = sys_read32(base + offset);
-	//LOG_DBG("reg-read=0x%x", reg);
 	reg &= ~mask;
-	//LOG_DBG("reg-~mask=0x%x", reg);
 	reg |= FIELD_PREP(mask, value);
-	//LOG_DBG("reg-FIELD_PREP=0x%x", reg);
 	sys_write32(reg, base + offset);
 }
 
@@ -215,7 +286,7 @@ void elan_em32_set_ahb_freq(const struct device *dev)
 		delay_100us();
 		ahb_em32_write_field(clkctrl_base, CLKCTRL_SYS_PLL_CTRL_OFF,
 					CLKCTRL_SYS_PLL_PD, 0x01);
-		_z_nop_delay(10);
+		delay_1us();
 	}
 
 	if (clk_src == External1) {
@@ -339,23 +410,21 @@ void elan_em32_set_ahb_freq(const struct device *dev)
 
 			ahb_em32_write_field(clkctrl_base, CLKCTRL_LDO_PLL_OFF,
 						CLKCTRL_PLL_LDO_PD, 0x00);
-			_z_nop_delay(10);
-			_z_nop_delay(10);
+			delay_1us();
 			ahb_em32_write_field(clkctrl_base, CLKCTRL_LDO_PLL_OFF,
 						CLKCTRL_PLL_LDO_VP_SEL, 0x00);
 			delay_10us();
-			delay_10us();
 			ahb_em32_write_field(clkctrl_base, CLKCTRL_SYS_PLL_CTRL_OFF,
 						CLKCTRL_SYS_PLL_PD, 0x00);
-			_z_nop_delay(10);
+			delay_1us();
 			while (ahb_em32_read_field(clkctrl_base,
 						   CLKCTRL_SYS_PLL_CTRL_OFF,
 						   CLKCTRL_SYS_PLL_STABLE) == 0)
 				;
-			_z_nop_delay(10);
+			delay_1us();
 			ahb_em32_write_field(sysctrl_base, SYSCTRL_SYS_REG_CTRL_OFF,
 						SYSCTRL_HCLK_SEL_MASK, 0x01);
-			_z_nop_delay(10);
+			delay_1us();
 		} else {
 			ahb_em32_write_field(sysctrl_base, SYSCTRL_SYS_REG_CTRL_OFF,
 						SYSCTRL_HCLK_SEL_MASK, 0x00);
@@ -432,8 +501,75 @@ static DEVICE_API(clock_control, elan_em32_ahb_clock_control_api) = {
 	.get_rate = elan_em32_ahb_clock_control_get_rate,
 };
 
+static bool dwt_try_enable(void)
+{
+	/*
+	 * Enable trace unit access required by DWT. This is architecture
+	 * standard for Cortex-M where CYCCNT lives in DWT.
+	 */
+	CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
+
+	/*
+	 * Unlock DWT if a Lock Access Register is present.
+	 */
+#ifdef DWT_LAR
+	DWT->LAR = 0xC5ACCE55;
+#endif
+
+	/*
+	 * Enable the cycle counter.
+	 */
+	DWT->CYCCNT = 0;
+	DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
+
+	/*
+	 * Sanity-check that CYCCNT increments.
+	 */
+	uint32_t c0 = DWT->CYCCNT;
+
+	for (volatile int i = 0; i < 1000; i++) {
+		__asm volatile("nop");
+	}
+
+	uint32_t c1 = DWT->CYCCNT;
+
+	return (c1 != c0);
+}
+
+static int delay_switch_to_late_post_init(void)
+{
+	/*
+	 * Switch delay backend to the kernel-aware implementation after
+	 * the system initialization has completed.
+	 */
+	delay_us_impl = late_delay_us;
+
+	return 0;
+}
+
+/* Enforce ordering: switch must run after system clock is initialized. */
+BUILD_ASSERT(CONFIG_EM32_DELAY_SWITCH_PRIORITY >
+         CONFIG_SYSTEM_CLOCK_INIT_PRIORITY,
+         "delay switch priority must be greater than system clock priority");
+
+/*
+ * Switch the delay backend at POST_KERNEL so that k_busy_wait() and other
+ * kernel primitives are available and calibrated.
+ */
+SYS_INIT(delay_switch_to_late_post_init, PRE_KERNEL_2, CONFIG_EM32_DELAY_SWITCH_PRIORITY);
+
 static int elan_em32_ahb_clock_control_init(const struct device *dev)
 {
+	/*
+	 * Attempt to enable DWT early to provide precise busy-wait delays
+	 * during clock configuration.
+	 */
+	g_dwt_ok = dwt_try_enable();
+
+	/*
+	 * Configure AHB frequency and update internal clock state used by
+	 * the early delay path.
+	 */
 	elan_em32_set_ahb_freq(dev);
 
 	return 0;
