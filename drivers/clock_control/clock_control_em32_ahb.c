@@ -638,14 +638,21 @@ static int elan_em32_ahb_clock_control_init(const struct device *dev)
 	return 0;
 }
 
-static const struct elan_em32_ahb_clock_control_config em32_ahb_config = {
-	.sysctrl_base = DT_REG_ADDR(SYSCTRL_DT_NODE),
-	.clkctrl_base = DT_REG_ADDR(CLKCTRL_DT_NODE),
-	.clock_source = DT_PROP(DT_NODELABEL(clk_ahb), clock_source),
-	.clock_frequency = DT_PROP(DT_NODELABEL(clk_ahb), clock_frequency),
-	.clock_divider = DT_PROP(DT_NODELABEL(clk_ahb), clock_divider),
-};
+#define EM32_AHB_INST_INIT(inst)                                                \
+static const struct elan_em32_ahb_clock_control_config em32_ahb_config_##inst = {\
+    .sysctrl_base   = DT_REG_ADDR(DT_NODELABEL(sysctrl)),                     \
+    .clkctrl_base   = DT_REG_ADDR(DT_NODELABEL(clkctrl)),                     \
+    .clock_source   = DT_INST_PROP(inst, clock_source),                        \
+    .clock_frequency= DT_INST_PROP(inst, clock_frequency),                     \
+    .clock_divider  = DT_INST_PROP(inst, clock_divider),                       \
+};                                                                              \
+DEVICE_DT_INST_DEFINE(inst,                                                     \
+              elan_em32_ahb_clock_control_init,                         \
+              NULL,                                                     \
+              NULL,                                                     \
+              &em32_ahb_config_##inst,                                   \
+              PRE_KERNEL_1,                                             \
+              CONFIG_CLOCK_CONTROL_INIT_PRIORITY,                        \
+              &elan_em32_ahb_clock_control_api)
 
-DEVICE_DT_INST_DEFINE(0, &elan_em32_ahb_clock_control_init, NULL, NULL, &em32_ahb_config,
-		      PRE_KERNEL_1, CONFIG_CLOCK_CONTROL_INIT_PRIORITY,
-		      &elan_em32_ahb_clock_control_api);
+DT_INST_FOREACH_STATUS_OKAY(EM32_AHB_INST_INIT);

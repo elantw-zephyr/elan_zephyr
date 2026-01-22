@@ -70,11 +70,17 @@ static int elan_em32_apb_clock_control_init(const struct device *dev)
 	return 0;
 }
 
-static const struct elan_em32_apb_clock_control_config em32_apb_config = {
-	.clock_device = DEVICE_DT_GET(DT_NODELABEL(clk_ahb)),
-	/*.clock_device = DEVICE_DT_GET(DT_INST_CLOCKS_CTLR(0)), */
-};
+#define EM32_APB_INST_INIT(inst)                                                \
+static const struct elan_em32_apb_clock_control_config em32_apb_config_##inst = {\
+    .clock_device = DEVICE_DT_GET(DT_INST_CLOCKS_CTLR(inst)),                \
+};                                                                              \
+DEVICE_DT_INST_DEFINE(inst,                                                     \
+              elan_em32_apb_clock_control_init,                          \
+              NULL,                                                       \
+              NULL,                                                       \
+              &em32_apb_config_##inst,                                    \
+              PRE_KERNEL_1,                                               \
+              CONFIG_CLOCK_CONTROL_INIT_PRIORITY,                          \
+              &elan_em32_apb_clock_control_api)
 
-DEVICE_DT_INST_DEFINE(0, &elan_em32_apb_clock_control_init, NULL, NULL, &em32_apb_config,
-		      PRE_KERNEL_1, CONFIG_CLOCK_CONTROL_INIT_PRIORITY,
-		      &elan_em32_apb_clock_control_api);
+DT_INST_FOREACH_STATUS_OKAY(EM32_APB_INST_INIT);
