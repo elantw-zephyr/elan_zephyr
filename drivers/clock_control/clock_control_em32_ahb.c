@@ -124,7 +124,7 @@ static inline void delay_us(uint32_t us)
 /**
  * @deprecated Use delay_us(1).
  */
-void delay_1us(void)
+static inline void delay_1us(void)
 {
 	delay_us(1);
 }
@@ -132,7 +132,7 @@ void delay_1us(void)
 /**
  * @deprecated Use delay_us(10).
  */
-void delay_10us(void)
+static inline void delay_10us(void)
 {
 	delay_us(10);
 }
@@ -140,7 +140,7 @@ void delay_10us(void)
 /**
  * @deprecated Use delay_us(100).
  */
-void delay_100us(void)
+static inline void delay_100us(void)
 {
 	delay_us(100);
 }

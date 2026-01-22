@@ -28,9 +28,6 @@
 //#include <flash_em32.h>
 #include "../../include/zephyr/drivers/flash/flash_em32.h"
 
-//#include <clock_control_em32_ahb.h>
-#include "../../include/zephyr/drivers/clock_control/clock_control_em32_ahb.h" // delay_10us() & delay_100us()
-
 /* Log configuration */
 #include <zephyr/logging/log.h>
 //LOG_MODULE_REGISTER(flash_em32, LOG_LEVEL_DBG);
@@ -166,7 +163,7 @@ void flash_em32_set_flash_key( FlashMode flash_mode, uint32_t pre_key1, uint32_t
             break;
     }
     FLASHKEY1 = key1;
-    delay_10us();
+    k_busy_wait(10);
 	
     // Flash Key 2
     switch( flash_mode )
@@ -183,7 +180,7 @@ void flash_em32_set_flash_key( FlashMode flash_mode, uint32_t pre_key1, uint32_t
             break;
     }
     FLASHKEY2 = key2;
-    delay_10us();
+    k_busy_wait(10);
 	
     LOG_DBG("key1=0x%x, key2=0x%x.", key1, key2);
 
@@ -198,7 +195,7 @@ void flash_em32_clear_flash_key(void)
     LOG_DBG("Clear flash key.");
     FLASHKEY1 = 0;
     FLASHKEY2 = 0;
-    delay_10us();
+    k_busy_wait(10);
     return;
 }
 
