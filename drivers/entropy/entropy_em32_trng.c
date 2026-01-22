@@ -16,7 +16,7 @@
 #include <zephyr/sys/byteorder.h>
 #include <string.h>
 #include <soc.h>
-#include "../../include/zephyr/drivers/clock_control/clock_control_em32_apb.h"
+#include "../../include/zephyr/drivers/clock_control/clock_control_em32_ahb.h"
 
 LOG_MODULE_REGISTER(entropy_em32_trng, CONFIG_ENTROPY_LOG_LEVEL);
 

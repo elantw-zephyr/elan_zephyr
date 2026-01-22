@@ -14,7 +14,7 @@ LOG_MODULE_REGISTER(spi_elandev, CONFIG_SPI_LOG_LEVEL);
 #include <zephyr/drivers/gpio.h>
 #include <../drivers/spi/spi_context.h>
 #include <zephyr/drivers/clock_control.h>
-#include "../../include/zephyr/drivers/clock_control/clock_control_em32_apb.h"
+#include "../../include/zephyr/drivers/clock_control/clock_control_em32_ahb.h"
 
 #include "em32f967.h" /* TODO: remove em32f967.h */
 #include "soc_967.h" /* TODO: remove soc_967.h and elan_em32.h */

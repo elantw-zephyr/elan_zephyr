@@ -10,10 +10,13 @@
 #include <zephyr/devicetree.h>
 #include <zephyr/drivers/clock_control.h>
 #include <zephyr/drivers/clock_control/clock_control_em32_ahb.h>
-#include <zephyr/drivers/clock_control/clock_control_em32_apb.h>
 
 #include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(em32_apb, CONFIG_LOG_DEFAULT_LEVEL);
+
+struct elan_em32_apb_clock_control_config {
+	const struct device *clock_device;
+};
 
 static int elan_em32_apb_clock_control_on(const struct device *dev, clock_control_subsys_t sys)
 {

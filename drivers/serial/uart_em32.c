@@ -5,7 +5,7 @@
 #include <zephyr/logging/log.h>
 #include <zephyr/drivers/clock_control.h>
 #include <zephyr/drivers/pinctrl.h>
-#include "../../include/zephyr/drivers/clock_control/clock_control_em32_apb.h"
+#include "../../include/zephyr/drivers/clock_control/clock_control_em32_ahb.h"
 #include <soc.h>
 
 #define _DEVICE_ID "elan967_uart_dev"
