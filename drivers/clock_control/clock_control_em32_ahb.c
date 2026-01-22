@@ -10,12 +10,21 @@
 #include <zephyr/devicetree.h>
 #include <zephyr/drivers/clock_control.h>
 #include <zephyr/drivers/clock_control/clock_control_em32_ahb.h>
+#include <zephyr/dt-bindings/clock/em32_clock.h>
 
 #include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(em32_ahb, CONFIG_LOG_DEFAULT_LEVEL);
 
 #include "soc_clkctrl.h"
 #include "soc_sysctrl.h"
+
+struct elan_em32_ahb_clock_control_config {
+	mm_reg_t sysctrl_base;
+	mm_reg_t clkctrl_base;
+	uint32_t clock_source;
+	uint32_t clock_frequency;
+	uint32_t clock_divider;
+};
 
 #if 1 /* temp, will move to include file */
 /* Register Base */
@@ -40,7 +49,7 @@ LOG_MODULE_REGISTER(em32_ahb, CONFIG_LOG_DEFAULT_LEVEL);
 /*
  * Configurations
  */
-__IO static uint32_t irc_freq_src = IRCLOW12;
+__IO static uint32_t irc_freq_src = EM32_CLK_FREQ_IRCLOW12;
 static uint32_t ahb_count = 12000; // 12M Hz
 static bool g_dwt_ok = false;
 
@@ -300,9 +309,9 @@ void elan_em32_set_ahb_freq(const struct device *dev)
 	const struct elan_em32_ahb_clock_control_config *config = dev->config;
 	mm_reg_t sysctrl_base = config->sysctrl_base;
 	mm_reg_t clkctrl_base = config->clkctrl_base;
-	ClockSource clk_src = config->clock_source;
-	Freq1Source freq_src = config->clock_frequency;
-	AHBPreScaler pre_div = config->clock_divider;
+	uint32_t clk_src = config->clock_source;
+	uint32_t freq_src = config->clock_frequency;
+	uint32_t pre_div = config->clock_divider;
 	bool bPLL = 0;
 
 	LOG_DBG("clock_source=0x%x, clock_frequency=0x%x, clock_divider=0x%x.", clk_src, freq_src,
@@ -310,7 +319,7 @@ void elan_em32_set_ahb_freq(const struct device *dev)
 
 	em32_clk_gate_open(sysctrl_base, PCLKG_AIP);
 
-	if (freq_src == IRCLOW12 /* irc_freq_src */) {
+	if (freq_src == EM32_CLK_FREQ_IRCLOW12 /* irc_freq_src */) {
 		ahb_em32_write_field(sysctrl_base, SYSCTRL_SYS_REG_CTRL_OFF,
 					SYSCTRL_HCLK_DIV_MASK, pre_div);
 		return;
@@ -334,7 +343,7 @@ void elan_em32_set_ahb_freq(const struct device *dev)
 		delay_1us();
 	}
 
-	if (clk_src == External1) {
+	if (clk_src == EM32_CLK_SRC_EXTERNAL1) {
 		ahb_em32_write_field(sysctrl_base, SYSCTRL_SYS_REG_CTRL_OFF,
 					SYSCTRL_HCLK_SEL_MASK, 0x02);
 	} else {
@@ -346,7 +355,7 @@ void elan_em32_set_ahb_freq(const struct device *dev)
 
 		uint32_t mirc_tall, mirc_tv12;
 		switch (freq_src) {
-		case IRCLOW12:
+		case EM32_CLK_FREQ_IRCLOW12:
 			mirc_tall = ahb_em32_read_field(MIRC_BASE,
 							MIRC_12M_R_2_OFF, MIRC_TALL_MASK);
 			mirc_tv12 = ahb_em32_read_field(MIRC_BASE,
@@ -357,8 +366,8 @@ void elan_em32_set_ahb_freq(const struct device *dev)
 						CLKCTRL_MIRC2_TV12_MASK, (~mirc_tv12 & 0x7));
 			break;
 
-		case IRCLOW16:
-		case IRCHIGH64:
+		case EM32_CLK_FREQ_IRCLOW16:
+		case EM32_CLK_FREQ_IRCHIGH64:
 			mirc_tall = ahb_em32_read_field(MIRC_BASE,
 							MIRC_16M_2_OFF, MIRC_TALL_MASK);
 			mirc_tv12 = ahb_em32_read_field(MIRC_BASE,
@@ -369,8 +378,8 @@ void elan_em32_set_ahb_freq(const struct device *dev)
 						CLKCTRL_MIRC2_TV12_MASK, (~mirc_tv12 & 0x7));
 			break;
 
-		case IRCLOW20:
-		case IRCHIGH80:
+		case EM32_CLK_FREQ_IRCLOW20:
+		case EM32_CLK_FREQ_IRCHIGH80:
 			mirc_tall = ahb_em32_read_field(MIRC_BASE,
 							MIRC_20M_2_OFF, MIRC_TALL_MASK);
 			mirc_tv12 = ahb_em32_read_field(MIRC_BASE,
@@ -381,8 +390,8 @@ void elan_em32_set_ahb_freq(const struct device *dev)
 						CLKCTRL_MIRC2_TV12_MASK, (~mirc_tv12 & 0x7));
 			break;
 
-		case IRCLOW24:
-		case IRCHIGH96:
+		case EM32_CLK_FREQ_IRCLOW24:
+		case EM32_CLK_FREQ_IRCHIGH96:
 			mirc_tall = ahb_em32_read_field(MIRC_BASE,
 							MIRC_24M_2_OFF, MIRC_TALL_MASK);
 			mirc_tv12 = ahb_em32_read_field(MIRC_BASE,
@@ -393,8 +402,8 @@ void elan_em32_set_ahb_freq(const struct device *dev)
 						CLKCTRL_MIRC2_TV12_MASK, (~mirc_tv12 & 0x7));
 			break;
 
-		case IRCLOW28:
-		case IRCHIGH112:
+		case EM32_CLK_FREQ_IRCLOW28:
+		case EM32_CLK_FREQ_IRCHIGH112:
 			mirc_tall = ahb_em32_read_field(MIRC_BASE,
 							MIRC_28M_2_OFF, MIRC_TALL_MASK);
 			mirc_tv12 = ahb_em32_read_field(MIRC_BASE,
@@ -405,8 +414,8 @@ void elan_em32_set_ahb_freq(const struct device *dev)
 						CLKCTRL_MIRC2_TV12_MASK, (~mirc_tv12 & 0x7));
 			break;
 
-		case IRCLOW32:
-		case IRCHIGH128:
+		case EM32_CLK_FREQ_IRCLOW32:
+		case EM32_CLK_FREQ_IRCHIGH128:
 			mirc_tall = ahb_em32_read_field(MIRC_BASE,
 							MIRC_32M_2_OFF, MIRC_TALL_MASK);
 			mirc_tv12 = ahb_em32_read_field(MIRC_BASE,
@@ -429,23 +438,23 @@ void elan_em32_set_ahb_freq(const struct device *dev)
 
 		if (bPLL) {
 			switch (freq_src) {
-			case IRCHIGH64:
+			case EM32_CLK_FREQ_IRCHIGH64:
 				ahb_em32_write_field(clkctrl_base, CLKCTRL_SYS_PLL_CTRL_OFF,
 							CLKCTRL_SYS_PLL_FSET_MASK, 0x00);
 				break;
-			case IRCHIGH80:
+			case EM32_CLK_FREQ_IRCHIGH80:
 				ahb_em32_write_field(clkctrl_base, CLKCTRL_SYS_PLL_CTRL_OFF,
 							CLKCTRL_SYS_PLL_FSET_MASK, 0x01);
 				break;
-			case IRCHIGH96:
+			case EM32_CLK_FREQ_IRCHIGH96:
 				ahb_em32_write_field(clkctrl_base, CLKCTRL_SYS_PLL_CTRL_OFF,
 							CLKCTRL_SYS_PLL_FSET_MASK, 0x02);
 				break;
-			case IRCHIGH112:
+			case EM32_CLK_FREQ_IRCHIGH112:
 				ahb_em32_write_field(clkctrl_base, CLKCTRL_SYS_PLL_CTRL_OFF,
 							CLKCTRL_SYS_PLL_FSET_MASK, 0x03);
 				break;
-			case IRCHIGH128:
+			case EM32_CLK_FREQ_IRCHIGH128:
 				ahb_em32_write_field(clkctrl_base, CLKCTRL_SYS_PLL_CTRL_OFF,
 							CLKCTRL_SYS_PLL_FSET_MASK, 0x03);
 				break;
@@ -481,7 +490,7 @@ void elan_em32_set_ahb_freq(const struct device *dev)
 		irc_freq_src = freq_src;
 	}
 
-	if (pre_div == DIV128) {
+	if (pre_div == EM32_AHB_CLK_DIV128) {
 		ahb_em32_write_field(sysctrl_base, SYSCTRL_SYS_REG_CTRL_OFF,
 					SYSCTRL_HCLK_DIV_MASK, (pre_div - 1));
 	} else {
