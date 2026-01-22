@@ -2,7 +2,6 @@
 #define __ELAN_SOC_967__
 
 #include "elan_em32.h"
-#include <zephyr/drivers/clock_control/clock_control_em32_ahb.h>
 
 typedef struct {
 	__IO uint32_t ESPI_S2: 2;      /* [1:0] */
