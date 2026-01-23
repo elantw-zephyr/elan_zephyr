@@ -13,6 +13,7 @@
 #include <zephyr/logging/log.h>
 #include <soc.h>
 #include "../../include/zephyr/drivers/clock_control/clock_control_em32_ahb.h"
+#include <elan_em32.h> //TODO: remove elan_em32.h
 
 LOG_MODULE_REGISTER(wdt_em32, CONFIG_WDT_LOG_LEVEL);
 

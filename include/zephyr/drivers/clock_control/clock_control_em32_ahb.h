@@ -11,7 +11,7 @@
 
 // #include <soc.h>
 // #include "../../../../soc/elan/em32f967/soc.h"
-#include <elan_em32.h>
+//#include <elan_em32.h>
 // #include "../../../../include/zephyr/drivers/clock_control/elan_em32.h" // Part of soc.h, only
 // definititions & structures
 
