@@ -3,6 +3,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+#include <zephyr/dt-bindings/clock/em32_clock_upstream.h>
+
 / {
 	chosen {
 		zephyr,console = &uart1;
@@ -55,6 +57,7 @@
 
 &uart1 {
 	compatible = "elan,em32-uart";
+	clocks = <&clk_apb_v2 EM32_GATE_PCLKG_UART1>;
 	status = "okay";
 };
 

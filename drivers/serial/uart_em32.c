@@ -25,6 +25,7 @@ LOG_MODULE_REGISTER(elan967_uart_dev, CONFIG_UART_LOG_LEVEL);
 struct uart_em32_config {
 	uintptr_t base;                 // base address from DTS `reg`
 	const struct device *clock_dev; // clock device reference from DTS "clocks" property
+	uint32_t clock_gate;
 	const struct pinctrl_dev_config *pcfg;
 };
 
@@ -87,9 +88,7 @@ static const struct uart_driver_api uart_em32_api = {
 static int uart_em32_init(const struct device *dev)
 {
 	const struct uart_em32_config *cfg = dev->config;
-	const struct device *apb_clk_dev = cfg->clock_dev;
 	struct uart_em32_data *data = dev->data;
-	struct elan_em32_clock_control_subsys apb_clk_subsys;
 	uint32_t apb_clk_rate = 0;
 	uint32_t bauddiv;
 	uint32_t baudrate = data->baudrate;
@@ -106,16 +105,33 @@ static int uart_em32_init(const struct device *dev)
 	}
 
 	/* Enable clock to specified peripheral */
+
+    if (!device_is_ready(cfg->clock_dev)) {
+        return -ENODEV;
+    }
+
+#if 1
+	struct elan_em32_clock_control_subsys subsys = {
+        .clock_group = cfg->clock_gate,
+    };
+
+    ret = clock_control_on(cfg->clock_dev, (clock_control_subsys_t)&subsys);
+    if (ret) {
+        return ret;
+    }
+#else
+	struct elan_em32_clock_control_subsys apb_clk_subsys;
 	apb_clk_subsys.clock_group = PCLKG_UART1;
 	LOG_DBG("clock_group=%d.", apb_clk_subsys.clock_group);
-	ret = clock_control_on(apb_clk_dev, &apb_clk_subsys);
+	ret = clock_control_on(cfg->clock_dev, &apb_clk_subsys);
 	if (ret < 0) {
 		LOG_ERR("Turn on apb clock fail %d.", ret);
 		return ret;
 	}
+#endif
 
 	// Get APB Clock Rate
-	ret = clock_control_get_rate(apb_clk_dev, NULL, &apb_clk_rate);
+	ret = clock_control_get_rate(cfg->clock_dev, NULL, &apb_clk_rate);
 	if (ret < 0) {
 		LOG_ERR("Fail to get apb clock rate, err=%d.", ret);
 		return ret;
@@ -144,7 +160,8 @@ static int uart_em32_init(const struct device *dev)
                                                                                                    \
 	static const struct uart_em32_config uart_em32_config_##index = {                    \
 		.base = DT_INST_REG_ADDR(index),                                                   \
-		.clock_dev = DEVICE_DT_GET(DT_INST_PHANDLE(index, clocks)),                        \
+		.clock_dev = DEVICE_DT_GET(DT_INST_CLOCKS_CTLR(index)),                        \
+		.clock_gate = DT_INST_CLOCKS_CELL_BY_IDX(index, 0, gate),                        \
 		.pcfg = PINCTRL_DT_INST_DEV_CONFIG_GET(index),                                     \
 	};                                                                                         \
                                                                                                    \
