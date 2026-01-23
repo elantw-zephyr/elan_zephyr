@@ -11,6 +11,7 @@
 #include <zephyr/drivers/clock_control.h>
 #include <zephyr/drivers/clock_control/clock_control_em32_ahb.h>
 #include <zephyr/dt-bindings/clock/em32_clock.h>
+#include <zephyr/dt-bindings/clock/em32_clock_upstream.h> /* tmp for upstream */
 
 #include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(em32_ahb, CONFIG_LOG_DEFAULT_LEVEL);
@@ -179,7 +180,7 @@ enum em32_gate_val {
 
 static inline bool em32_gate_is_all(uint32_t gate_idx)
 {
-	return (gate_idx == (uint32_t)PCLKG_ALL);
+	return (gate_idx == (uint32_t)EM32_GATE_PCLKG_ALL);
 }
 
 static inline bool em32_gate_is_valid(uint32_t gate_idx)
@@ -317,7 +318,7 @@ void elan_em32_set_ahb_freq(const struct device *dev)
 	LOG_DBG("clock_source=0x%x, clock_frequency=0x%x, clock_divider=0x%x.", clk_src, freq_src,
 		pre_div);
 
-	em32_clk_gate_open(sysctrl_base, PCLKG_AIP);
+	em32_clk_gate_open(sysctrl_base, EM32_GATE_PCLKG_AIP);
 
 	if (freq_src == EM32_CLK_FREQ_IRCLOW12 /* irc_freq_src */) {
 		ahb_em32_write_field(sysctrl_base, SYSCTRL_SYS_REG_CTRL_OFF,
@@ -521,8 +522,8 @@ static int elan_em32_ahb_clock_control_on(const struct device *dev,
 	// LOG_DBG("clock_group=%d.", clk_grp);
 
 	/* Accept known indices and the ALL marker. */
-	if (((clk_grp >= HCLKG_DMA) && (clk_grp <= PCLKG_SSP1)) ||
-		(clk_grp == PCLKG_ALL)) {
+	if (((clk_grp >= EM32_GATE_HCLKG_DMA) && (clk_grp <= EM32_GATE_PCLKG_SSP1)) ||
+		(clk_grp == EM32_GATE_PCLKG_ALL)) {
 		/* Enabling a clock == open gate (clear the bit). */
 		em32_clk_gate_open(cfg->sysctrl_base, clk_grp);
 		return 0;
@@ -542,11 +543,11 @@ static int elan_em32_ahb_clock_control_off(const struct device *dev,
 	// LOG_DBG("clock_group=%d.", clk_grp);
 
 	/* Do not support closing ALL clocks; reject explicitly. */
-	if (clk_grp == PCLKG_ALL) {
+	if (clk_grp == EM32_GATE_PCLKG_ALL) {
 		return -ENOTSUP;
 	}
 
-	if ((clk_grp >= HCLKG_DMA) && (clk_grp <= PCLKG_SSP1)) {
+	if ((clk_grp >= EM32_GATE_HCLKG_DMA) && (clk_grp <= EM32_GATE_PCLKG_SSP1)) {
 		/* Disabling a clock == close gate (set the bit). */
 		em32_clk_gate_close(cfg->sysctrl_base, clk_grp);
 		return 0;
