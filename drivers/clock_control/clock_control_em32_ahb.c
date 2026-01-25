@@ -6,11 +6,12 @@
 
 #define DT_DRV_COMPAT elan_em32_ahb
 
+#include <zephyr/kernel.h>
 #include <zephyr/device.h>
 #include <zephyr/devicetree.h>
 #include <zephyr/drivers/clock_control.h>
 #include <zephyr/drivers/clock_control/clock_control_em32_ahb.h>
-#include <zephyr/dt-bindings/clock/em32_clock.h>
+//#include <zephyr/dt-bindings/clock/em32_clock.h>
 #include <zephyr/dt-bindings/clock/em32_clock_upstream.h> /* tmp for upstream */
 
 #include <zephyr/logging/log.h>
@@ -50,7 +51,6 @@ struct elan_em32_ahb_clock_control_config {
 /*
  * Configurations
  */
-__IO static uint32_t irc_freq_src = EM32_CLK_FREQ_IRCLOW12;
 static uint32_t ahb_count = 12000; // 12M Hz
 static bool g_dwt_ok = false;
 
@@ -246,27 +246,27 @@ uint32_t elan_em32_get_ahb_freq(const struct device *dev)
 	case 0x00:
 		irc_freq = 12000;
 		irc_pll_freq = 12000 * 16 / 2;
-		break; // 12M/120M
+		break; /* 12M/120M */
 	case 0x01:
 		irc_freq = 16000;
 		irc_pll_freq = 16000 * 16 / 4;
-		break; // 16M/80M
+		break; /* 16M/80M */
 	case 0x02:
 		irc_freq = 20000;
 		irc_pll_freq = 20000 * 16 / 4;
-		break; // 20M/100M
+		break; /* 20M/100M */
 	case 0x03:
 		irc_freq = 24000;
 		irc_pll_freq = 24000 * 16 / 4;
-		break; // 24M/120M
+		break; /* 24M/120M */
 	case 0x04:
 		irc_freq = 28000;
 		irc_pll_freq = 28000 * 16 / 6;
-		break; // 28M/93M
+		break; /* 28M/93M*/
 	case 0x05:
 		irc_freq = 32000;
 		irc_pll_freq = 32000 * 16 / 6;
-		break; // 32M/107M
+		break; /* 32M/107M */
 	default:
 		break;
 	}
@@ -314,9 +314,6 @@ void elan_em32_set_ahb_freq(const struct device *dev)
 	uint32_t freq_src = config->clock_frequency;
 	uint32_t pre_div = config->clock_divider;
 	bool bPLL = 0;
-
-	LOG_DBG("clock_source=0x%x, clock_frequency=0x%x, clock_divider=0x%x.", clk_src, freq_src,
-		pre_div);
 
 	em32_clk_gate_open(sysctrl_base, EM32_GATE_PCLKG_AIP);
 
@@ -487,8 +484,6 @@ void elan_em32_set_ahb_freq(const struct device *dev)
 			ahb_em32_write_field(clkctrl_base, CLKCTRL_SYS_PLL_CTRL_OFF,
 						CLKCTRL_SYS_PLL_PD, 0x01);
 		}
-
-		irc_freq_src = freq_src;
 	}
 
 	if (pre_div == EM32_AHB_CLK_DIV128) {
@@ -507,7 +502,6 @@ void elan_em32_set_ahb_freq(const struct device *dev)
 				SYSCTRL_HCLK_DIV_MASK, pre_div);
 
 	ahb_count = elan_em32_get_ahb_freq(dev);
-	LOG_DBG("ahb_count=%d.", ahb_count);
 
 	return;
 }
@@ -519,11 +513,16 @@ static int elan_em32_ahb_clock_control_on(const struct device *dev,
 	struct elan_em32_clock_control_subsys *subsys =
 		(struct elan_em32_clock_control_subsys *)sys;
 	uint32_t clk_grp = subsys->clock_group;
-	// LOG_DBG("clock_group=%d.", clk_grp);
+
+	/* API-level "ALL" */
+	if (sys == CLOCK_CONTROL_SUBSYS_ALL) {
+		/* Enabling all clock == open gate. */
+		em32_clk_gate_open(cfg->sysctrl_base, EM32_GATE_PCLKG_ALL);
+		return 0;
+	}
 
 	/* Accept known indices and the ALL marker. */
-	if (((clk_grp >= EM32_GATE_HCLKG_DMA) && (clk_grp <= EM32_GATE_PCLKG_SSP1)) ||
-		(clk_grp == EM32_GATE_PCLKG_ALL)) {
+	if ((clk_grp >= EM32_GATE_HCLKG_DMA) && (clk_grp <= EM32_GATE_PCLKG_SSP1)) {
 		/* Enabling a clock == open gate (clear the bit). */
 		em32_clk_gate_open(cfg->sysctrl_base, clk_grp);
 		return 0;
@@ -540,10 +539,9 @@ static int elan_em32_ahb_clock_control_off(const struct device *dev,
 	struct elan_em32_clock_control_subsys *subsys =
 		(struct elan_em32_clock_control_subsys *)sys;
 	uint32_t clk_grp = subsys->clock_group;
-	// LOG_DBG("clock_group=%d.", clk_grp);
 
 	/* Do not support closing ALL clocks; reject explicitly. */
-	if (clk_grp == EM32_GATE_PCLKG_ALL) {
+	if (sys == CLOCK_CONTROL_SUBSYS_ALL) {
 		return -ENOTSUP;
 	}
 
