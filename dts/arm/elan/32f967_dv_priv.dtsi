@@ -52,6 +52,7 @@
 };
 
 &spi2 {
+	clocks = <&clk_apb_v2 EM32_GATE_PCLKG_SSP2>;
 	status = "okay";
 };
 
@@ -62,10 +63,12 @@
 };
 
 &gpioa {
+	clocks = <&clk_ahb_v2 EM32_GATE_HCLKG_GPIOA>;
 	status = "okay";
 };
 
 &gpiob {
+	clocks = <&clk_ahb_v2 EM32_GATE_HCLKG_GPIOB>;
 	status = "okay";
 };
 
@@ -82,33 +85,48 @@
 };
 
 &trng0 {
+	clocks = <&clk_apb_v2 EM32_GATE_PCLKG_TRNG>;
 	status = "okay";
 };
 
 &wdt0 {
+	clocks = <&clk_apb_v2 EM32_GATE_PCLKG_DWG>;
 	status = "okay";
 };
 
 &crypto0 {
+	clocks = <&clk_apb_v2 EM32_GATE_HCLKG_ENCRYPT>;
 	status = "okay";
 };
 
 /* Enable Timer controllers */
 &timer1 {
+	clocks = <&clk_apb_v2 EM32_GATE_PCLKG_TMR1>;
 	status = "okay";
 };
 
 &timer2 {
+	clocks = <&clk_apb_v2 EM32_GATE_PCLKG_TMR2>;
 	status = "okay";
+};
+
+&timer3 {
+	clocks = <&clk_apb_v2 EM32_GATE_PCLKG_TMR3>;
+};
+
+&timer4 {
+	clocks = <&clk_apb_v2 EM32_GATE_PCLKG_TMR4>;
 };
 
 /* Enable RTC */
 &rtc0 {
+	clocks = <&clk_apb_v2 EM32_GATE_PCLKG_RTC>;
 	status = "okay";
 };
 
 /* Enable PWM Controller - PWMB N output on PA3 */
 &pwm0 {
+	clocks = <&clk_apb_v2 EM32_GATE_PCLKG_PWM>;
 	status = "okay";
 };
 
