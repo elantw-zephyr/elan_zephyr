@@ -30,7 +30,7 @@ struct timer_em32_config {
     uint32_t base;
     uint32_t clock_freq;
     const struct device *clock_dev;
-    clock_control_subsys_t clock_subsys;
+	uint32_t clock_gate;
     void (*irq_config_func)(const struct device *dev);
 };
 
@@ -143,7 +143,7 @@ static int timer_em32_init(const struct device *dev)
 
     /* Enable clock */
     if (config->clock_dev) {
-        clock_control_on(config->clock_dev, config->clock_subsys);
+        clock_control_on(config->clock_dev, UINT_TO_POINTER(config->clock_gate));
     }
 
     /* Calculate ticks per system clock cycle */
@@ -175,7 +175,7 @@ static int timer_em32_init(const struct device *dev)
         .base = DT_INST_REG_ADDR(n),					\
         .clock_freq = DT_PROP(DT_INST_CLOCKS_CTLR(n), clock_frequency),\
         .clock_dev = DEVICE_DT_GET(DT_INST_CLOCKS_CTLR(n)),		\
-        .clock_subsys = (clock_control_subsys_t)0, \
+        .clock_gate = DT_INST_CLOCKS_CELL_BY_IDX(n, 0, gate), \
         .irq_config_func = timer_em32_irq_config_func_##n,		\
     };									\
                                         \

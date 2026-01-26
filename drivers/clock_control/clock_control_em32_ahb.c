@@ -10,12 +10,13 @@
 #include <zephyr/device.h>
 #include <zephyr/devicetree.h>
 #include <zephyr/drivers/clock_control.h>
-#include <zephyr/drivers/clock_control/clock_control_em32_ahb.h>
 //#include <zephyr/dt-bindings/clock/em32_clock.h>
 #include <zephyr/dt-bindings/clock/em32_clock_upstream.h> /* tmp for upstream */
 
 #include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(em32_ahb, CONFIG_LOG_DEFAULT_LEVEL);
+
+#include <zephyr/sys/util.h>
 
 #include "soc_clkctrl.h"
 #include "soc_sysctrl.h"
@@ -510,12 +511,10 @@ static int elan_em32_ahb_clock_control_on(const struct device *dev,
 					  clock_control_subsys_t sys)
 {
 	const struct elan_em32_ahb_clock_control_config *cfg = dev->config;
-	struct elan_em32_clock_control_subsys *subsys =
-		(struct elan_em32_clock_control_subsys *)sys;
-	uint32_t clk_grp = subsys->clock_group;
+	uint32_t clk_grp = POINTER_TO_UINT(sys);
 
 	/* API-level "ALL" */
-	if (sys == CLOCK_CONTROL_SUBSYS_ALL) {
+	if (sys == CLOCK_CONTROL_SUBSYS_ALL || clk_grp == EM32_GATE_PCLKG_ALL) {
 		/* Enabling all clock == open gate. */
 		em32_clk_gate_open(cfg->sysctrl_base, EM32_GATE_PCLKG_ALL);
 		return 0;
@@ -536,12 +535,10 @@ static int elan_em32_ahb_clock_control_off(const struct device *dev,
 					   clock_control_subsys_t sys)
 {
 	const struct elan_em32_ahb_clock_control_config *cfg = dev->config;
-	struct elan_em32_clock_control_subsys *subsys =
-		(struct elan_em32_clock_control_subsys *)sys;
-	uint32_t clk_grp = subsys->clock_group;
+	uint32_t clk_grp = POINTER_TO_UINT(sys);
 
 	/* Do not support closing ALL clocks; reject explicitly. */
-	if (sys == CLOCK_CONTROL_SUBSYS_ALL) {
+	if (sys == CLOCK_CONTROL_SUBSYS_ALL || clk_grp == EM32_GATE_PCLKG_ALL) {
 		return -ENOTSUP;
 	}
 

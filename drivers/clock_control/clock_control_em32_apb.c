@@ -9,7 +9,6 @@
 #include <zephyr/device.h>
 #include <zephyr/devicetree.h>
 #include <zephyr/drivers/clock_control.h>
-#include <zephyr/drivers/clock_control/clock_control_em32_ahb.h>
 
 #include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(em32_apb, CONFIG_LOG_DEFAULT_LEVEL);
@@ -27,7 +26,9 @@ static int elan_em32_apb_clock_control_on(const struct device *dev, clock_contro
 
 static int elan_em32_apb_clock_control_off(const struct device *dev, clock_control_subsys_t sys)
 {
-	return -ENOTSUP;
+	const struct elan_em32_apb_clock_control_config *config = dev->config;
+
+	return clock_control_off(config->clock_device, sys);
 }
 
 static int elan_em32_apb_clock_control_get_rate(const struct device *dev,
@@ -39,7 +40,9 @@ static int elan_em32_apb_clock_control_get_rate(const struct device *dev,
 	uint32_t apb_clk_rate = 0;
 
 	// Get AHB Clock Rate
-	ret = clock_control_get_rate(config->clock_device, NULL, &ahb_clk_rate);
+	ret = clock_control_get_rate(config->clock_device,
+				     CLOCK_CONTROL_SUBSYS_ALL,
+				     &ahb_clk_rate);
 	if (ret) {
 		LOG_ERR("Fail to Get AHB Clock Rate, err=%d.", ret);
 		return ret;

@@ -15,11 +15,6 @@
 #include <stdlib.h>
 #include "elan_em32.h"
 
-/* Clock control subsystem structure */
-struct elan_em32_clock_control_subsys {
-	uint32_t clock_group;
-};
-
 /* EM32F902 RTC register offsets - corrected per spec */
 #define RTC_RTCSECOND_OFFSET    0x00    /* RTC Second Register (Read-only) */
 #define RTC_RTCMINUTE_OFFSET    0x04    /* RTC Minute Register (Read-only) */
@@ -64,7 +59,7 @@ struct elan_em32_clock_control_subsys {
 struct rtc_em32_config {
     uint32_t base;
     const struct device *clock_dev;
-    clock_control_subsys_t clock_subsys;
+	uint32_t clock_gate;
 };
 
 struct rtc_em32_data {
@@ -538,7 +533,7 @@ static int rtc_em32_init(const struct device *dev)
 
     /* Enable clock */
     if (config->clock_dev) {
-        ret = clock_control_on(config->clock_dev, config->clock_subsys);
+        ret = clock_control_on(config->clock_dev, UINT_TO_POINTER(config->clock_gate));
         if (ret < 0) {
             printk("RTC: Failed to enable clock: %d\n", ret);
             return ret;
@@ -592,13 +587,10 @@ static int rtc_em32_init(const struct device *dev)
         irq_enable(DT_INST_IRQN(n));					\
     }									\
                                         \
-    static struct elan_em32_clock_control_subsys rtc_em32_clk_subsys_##n = { \
-        .clock_group = PCLKG_RTC, \
-    }; \
     static const struct rtc_em32_config rtc_em32_config_##n = {	\
         .base = DT_INST_REG_ADDR(n),					\
         .clock_dev = DEVICE_DT_GET(DT_INST_CLOCKS_CTLR(n)),		\
-        .clock_subsys = (clock_control_subsys_t)&rtc_em32_clk_subsys_##n, \
+        .clock_gate = DT_INST_CLOCKS_CELL_BY_IDX(n, 0, gate),		\
     };									\
                                         \
     static struct rtc_em32_data rtc_em32_data_##n;			\

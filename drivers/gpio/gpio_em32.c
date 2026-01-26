@@ -31,7 +31,6 @@
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/drivers/gpio/gpio_utils.h>
 #include <zephyr/drivers/clock_control.h>
-#include "../../include/zephyr/drivers/clock_control/clock_control_em32_ahb.h"
 #include <zephyr/dt-bindings/gpio/gpio.h>
 #include <zephyr/irq.h>
 #include <zephyr/logging/log.h>
@@ -120,6 +119,7 @@ struct gpio_em32_config {
 	uint32_t sysctrl_base;
 	/* Clock device (from DT `clocks` phandle) */
 	const struct device *clock_dev;
+	uint32_t clock_gate;
 	/* Port identifier (0=PORTA, 1=PORTB) */
 	uint32_t port;
 	/* Clock control */
@@ -559,7 +559,6 @@ int gpio_em32_configure(const struct device *dev, gpio_pin_t pin,
 {
 	const struct gpio_em32_config *config = dev->config;
 	const struct device *clk_dev = config->clock_dev;
-	struct elan_em32_clock_control_subsys clk_subsys;
 	int clk_ret;
 	int ret;
 
@@ -572,9 +571,7 @@ int gpio_em32_configure(const struct device *dev, gpio_pin_t pin,
 		config->port, pin, func, conf);
 
 	/* Ensure clock is enabled for this GPIO port via Zephyr clock_control */
-	clk_subsys.clock_group = (config->port == 0) ? HCLKG_GPIOA : HCLKG_GPIOB;
-	LOG_DBG("clock_group=%d.", clk_subsys.clock_group);
-	clk_ret = clock_control_on(clk_dev, &clk_subsys);
+	clk_ret = clock_control_on(clk_dev, UINT_TO_POINTER(config->clock_gate));
 	if (clk_ret < 0) {
 		LOG_ERR("Turn on AHB clock fail %d.", clk_ret);
 		return clk_ret;
@@ -625,15 +622,12 @@ static int gpio_em32_init(const struct device *dev)
 	const struct gpio_em32_config *config = dev->config;
 	struct gpio_em32_data *data = dev->data;
 	const struct device *clk_dev = config->clock_dev;
-	struct elan_em32_clock_control_subsys clk_subsys;
 	int clk_ret;
 
 	LOG_INF("Initializing EM32 GPIO port %d at 0x%08X", config->port, config->base);
 
 	/* Enable GPIO clock first */
-	clk_subsys.clock_group = (config->port == 0) ? HCLKG_GPIOA : HCLKG_GPIOB;
-	LOG_DBG("clock_group=%d.", clk_subsys.clock_group);
-	clk_ret = clock_control_on(clk_dev, &clk_subsys);
+	clk_ret = clock_control_on(clk_dev, UINT_TO_POINTER(config->clock_gate));
 	if (clk_ret < 0) {
 			LOG_ERR("Turn on AHB clock fail %d.", clk_ret);
 			return clk_ret;
@@ -681,7 +675,8 @@ static int gpio_em32_init(const struct device *dev)
 			},                                                                         \
 		.base = DT_INST_REG_ADDR(n),                                        \
 		.sysctrl_base = DT_REG_ADDR(DT_NODELABEL(sysctrl)),\
-		.clock_dev = DEVICE_DT_GET(DT_INST_PHANDLE(n, clocks)),\
+		.clock_dev = DEVICE_DT_GET(DT_INST_CLOCKS_CTLR(n)),\
+		.clock_gate = DT_INST_CLOCKS_CELL_BY_IDX(n, 0, gate),\
 		.port = DT_INST_PROP(n, port_id),                                                  \
 		.pclken =                                                                          \
 			{                                                                          \

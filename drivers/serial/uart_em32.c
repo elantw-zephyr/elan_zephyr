@@ -5,7 +5,6 @@
 #include <zephyr/logging/log.h>
 #include <zephyr/drivers/clock_control.h>
 #include <zephyr/drivers/pinctrl.h>
-#include "../../include/zephyr/drivers/clock_control/clock_control_em32_ahb.h"
 #include <soc.h>
 
 #define _DEVICE_ID "elan967_uart_dev"
@@ -110,25 +109,10 @@ static int uart_em32_init(const struct device *dev)
         return -ENODEV;
     }
 
-#if 1
-	struct elan_em32_clock_control_subsys subsys = {
-        .clock_group = cfg->clock_gate,
-    };
-
-    ret = clock_control_on(cfg->clock_dev, (clock_control_subsys_t)&subsys);
+    ret = clock_control_on(cfg->clock_dev, UINT_TO_POINTER(cfg->clock_gate));
     if (ret) {
         return ret;
     }
-#else
-	struct elan_em32_clock_control_subsys apb_clk_subsys;
-	apb_clk_subsys.clock_group = PCLKG_UART1;
-	LOG_DBG("clock_group=%d.", apb_clk_subsys.clock_group);
-	ret = clock_control_on(cfg->clock_dev, &apb_clk_subsys);
-	if (ret < 0) {
-		LOG_ERR("Turn on apb clock fail %d.", ret);
-		return ret;
-	}
-#endif
 
 	// Get APB Clock Rate
 	ret = clock_control_get_rate(cfg->clock_dev, NULL, &apb_clk_rate);

@@ -16,7 +16,6 @@
 #include <zephyr/sys/byteorder.h>
 #include <string.h>
 #include <soc.h>
-#include "../../include/zephyr/drivers/clock_control/clock_control_em32_ahb.h"
 #include <elan_em32.h> //TODO: remove elan_em32.h
 
 LOG_MODULE_REGISTER(entropy_em32_trng, CONFIG_ENTROPY_LOG_LEVEL);
@@ -48,6 +47,7 @@ LOG_MODULE_REGISTER(entropy_em32_trng, CONFIG_ENTROPY_LOG_LEVEL);
 struct em32_trng_config {
 	uintptr_t base;
 	const struct device *clock_dev;
+	uint32_t clock_gate;
 };
 
 struct em32_trng_data {
@@ -117,7 +117,6 @@ static int em32_trng_init(const struct device *dev)
 	const struct em32_trng_config *cfg = dev->config;
 	struct em32_trng_data *data = dev->data;
 	const struct device *apb_clk_dev = cfg->clock_dev;
-	struct elan_em32_clock_control_subsys apb_clk_subsys;
 	int ret = 0;
 
 	/* Disable TRNG clock gate to enable TRNG clock */
@@ -131,9 +130,7 @@ static int em32_trng_init(const struct device *dev)
 			return -ENODEV;
 		}
 
-		apb_clk_subsys.clock_group = PCLKG_TRNG;
-		LOG_DBG("clock_group=%d.", apb_clk_subsys.clock_group);
-		ret = clock_control_on(apb_clk_dev, &apb_clk_subsys);
+		ret = clock_control_on(apb_clk_dev, UINT_TO_POINTER(cfg->clock_gate));
 		if (ret < 0) {
 			LOG_ERR("Turn on apb clock fail %d.", ret);
 			return ret;
@@ -261,7 +258,8 @@ static int em32_trng_collect_cycle(const struct device *dev, uint8_t *buffer)
 	static struct em32_trng_data em32_trng_data_##inst; \
 	static const struct em32_trng_config em32_trng_config_##inst = { \
 		.base = DT_INST_REG_ADDR(inst), \
-		.clock_dev = DEVICE_DT_GET(DT_INST_PHANDLE(inst, clocks)), \
+		.clock_dev = DEVICE_DT_GET(DT_INST_CLOCKS_CTLR(inst)), \
+		.clock_gate = DT_INST_CLOCKS_CELL_BY_IDX(inst, 0, gate), \
 	}; \
     DEVICE_DT_INST_DEFINE(inst, em32_trng_init, NULL, &em32_trng_data_##inst, \
     &em32_trng_config_##inst, POST_KERNEL, CONFIG_ENTROPY_EM32_TRNG_INIT_PRIORITY, &em32_trng_api);

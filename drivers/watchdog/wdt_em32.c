@@ -12,7 +12,6 @@
 #include <zephyr/drivers/clock_control.h>
 #include <zephyr/logging/log.h>
 #include <soc.h>
-#include "../../include/zephyr/drivers/clock_control/clock_control_em32_ahb.h"
 #include <elan_em32.h> //TODO: remove elan_em32.h
 
 LOG_MODULE_REGISTER(wdt_em32, CONFIG_WDT_LOG_LEVEL);
@@ -53,7 +52,7 @@ LOG_MODULE_REGISTER(wdt_em32, CONFIG_WDT_LOG_LEVEL);
 struct wdt_em32_config {
     uint32_t base;
     const struct device *clock_dev;
-    uint32_t clock_group_id;
+	uint32_t clock_gate;
 };
 
 struct wdt_em32_data {
@@ -316,16 +315,11 @@ static int wdt_em32_init(const struct device *dev)
             return -ENODEV;
         }
         
-        struct elan_em32_clock_control_subsys clk_subsys = {
-            .clock_group = config->clock_group_id
-        };
-        
-        int ret = clock_control_on(config->clock_dev, &clk_subsys);
+        int ret = clock_control_on(config->clock_dev, UINT_TO_POINTER(config->clock_gate));
         if (ret < 0) {
             LOG_ERR("WDT: Failed to enable clock: %d", ret);
             return ret;
         }
-        LOG_INF("WDT: Clock enabled successfully (group %u)", config->clock_group_id);
     }
 
     /* Initialize data */
@@ -357,7 +351,7 @@ static int wdt_em32_init(const struct device *dev)
     static const struct wdt_em32_config wdt_em32_config_##n = {	\
         .base = DT_INST_REG_ADDR(n),					\
         .clock_dev = DEVICE_DT_GET(DT_INST_CLOCKS_CTLR(n)),		\
-        .clock_group_id = PCLKG_DWG, \
+        .clock_gate = DT_INST_CLOCKS_CELL_BY_IDX(n, 0, gate), \
     };									\
                                         \
     static struct wdt_em32_data wdt_em32_data_##n;			\

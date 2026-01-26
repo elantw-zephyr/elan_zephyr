@@ -15,7 +15,6 @@
 #include <errno.h>
 #include <string.h>
 #include <soc.h>
-#include "../../include/zephyr/drivers/clock_control/clock_control_em32_ahb.h"
 #include <elan_em32.h> //TODO: remove elan_em32.h
 
 LOG_MODULE_REGISTER(crypto_em32_sha, CONFIG_CRYPTO_LOG_LEVEL);
@@ -76,7 +75,7 @@ enum sha_operation_state {
 struct crypto_em32_config {
     uint32_t base;
     const struct device *clock_dev;
-    uint32_t clock_group_id;
+	uint32_t clock_gate;
 #ifdef CONFIG_CRYPTO_EM32_SHA_INTERRUPT
     void (*irq_config_func)(const struct device *dev);
 #endif
@@ -832,11 +831,7 @@ static int crypto_em32_init(const struct device *dev)
             return -ENODEV;
         }
 
-        struct elan_em32_clock_control_subsys clk_subsys = {
-            .clock_group = cfg->clock_group_id
-        };
-
-        ret = clock_control_on(cfg->clock_dev, &clk_subsys);
+        ret = clock_control_on(cfg->clock_dev, UINT_TO_POINTER(cfg->clock_gate));
         if (ret < 0) {
             LOG_ERR("Failed to enable clock: %d", ret);
             return ret;
@@ -877,7 +872,7 @@ static int crypto_em32_init(const struct device *dev)
     static const struct crypto_em32_config crypto_em32_config_##n = {         \
         .base = DT_INST_REG_ADDR(n),                                         \
         .clock_dev = DEVICE_DT_GET_OR_NULL(DT_INST_CLOCKS_CTLR(n)),          \
-        .clock_group_id = HCLKG_ENCRYPT, \
+        .clock_gate = DT_INST_CLOCKS_CELL_BY_IDX(n, 0, gate),          \
         IF_ENABLED(CONFIG_CRYPTO_EM32_SHA_INTERRUPT,                          \
                   (.irq_config_func = crypto_em32_irq_config_##n,))           \
     };                                                                         \

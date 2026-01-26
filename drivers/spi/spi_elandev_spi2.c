@@ -14,7 +14,6 @@ LOG_MODULE_REGISTER(spi_elandev, CONFIG_SPI_LOG_LEVEL);
 #include <zephyr/drivers/gpio.h>
 #include <../drivers/spi/spi_context.h>
 #include <zephyr/drivers/clock_control.h>
-#include "../../include/zephyr/drivers/clock_control/clock_control_em32_ahb.h"
 
 #include "em32f967.h" /* TODO: remove em32f967.h */
 #include "soc_967.h" /* TODO: remove soc_967.h and elan_em32.h */
@@ -144,6 +143,7 @@ LOG_MODULE_REGISTER(spi_elandev, CONFIG_SPI_LOG_LEVEL);
 struct spi_elandev_config {
 	uintptr_t base;                 // base address from DTS `reg`
 	const struct device *clock_dev; // clock device reference from DTS "clocks" property
+	uint32_t clock_gate;
 	const struct pinctrl_dev_config *pcfg;
 };
 
@@ -187,7 +187,6 @@ static int spi_pl022_configure(const struct device *dev, const struct spi_config
 	const struct spi_elandev_config *cfg = dev->config;
 	struct spi_elandev_data *data = dev->data;
 	const struct device *apb_clk_dev = cfg->clock_dev;
-	struct elan_em32_clock_control_subsys apb_clk_subsys;
 	const uint16_t op = spicfg->operation;
 	uint32_t apb_clk_rate = 0;
 	uint32_t prescale;
@@ -204,9 +203,7 @@ static int spi_pl022_configure(const struct device *dev, const struct spi_config
 	/* Enable clock to specified peripheral if clock device is available */
 	if (apb_clk_dev != NULL) {
 		/* Enable clock to specified peripheral */
-		apb_clk_subsys.clock_group = PCLKG_SSP2;
-		LOG_DBG("clock_group=%d.", apb_clk_subsys.clock_group);
-		ret = clock_control_on(apb_clk_dev, &apb_clk_subsys);
+		ret = clock_control_on(apb_clk_dev, UINT_TO_POINTER(cfg->clock_gate));
 		if (ret < 0) {
 			LOG_ERR("Turn on apb clock fail %d.", ret);
 			return ret;
@@ -456,7 +453,8 @@ static int spi_e967_init(const struct device *dev)
                                                                                                    \
 	static const struct spi_elandev_config spi_elandev_config_##index = {                      \
 		.base = DT_INST_REG_ADDR(index),                                                   \
-		.clock_dev = DEVICE_DT_GET(DT_INST_PHANDLE(index, clocks)),                        \
+		.clock_dev = DEVICE_DT_GET(DT_INST_CLOCKS_CTLR(index)),                        \
+		.clock_gate = DT_INST_CLOCKS_CELL_BY_IDX(index, 0, gate),                        \
 		.pcfg = PINCTRL_DT_INST_DEV_CONFIG_GET(index),                                     \
 	};                                                                                         \
                                                                                                    \
