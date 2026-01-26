@@ -326,6 +326,26 @@ static int pwm_em32_init(const struct device *dev)
 		}
 	}
 
+	/* If using Port A and N outputs (PWMB_N on PA3 etc.), enable high-drive
+	 * capability for the relevant pins. The IO high-drive control registers
+	 * are in the IOMUX block and use one bit per pin (bit = pin number).
+	 */
+	if (cfg->use_port_a &&
+	    (cfg->output_type == PWM_EM32_OUTPUT_N || cfg->output_type == PWM_EM32_OUTPUT_BOTH)) {
+		uint32_t hd = sys_read32(EM32_IO_HD_PA_CTRL_REG);
+		/* Set high-drive for PA1 (PWMA_N), PA3 (PWMB_N), PA5 (PWMC_N) */
+		hd |= (BIT(1) | BIT(3) | BIT(5));
+		sys_write32(hd, EM32_IO_HD_PA_CTRL_REG);
+		LOG_DBG("Enabled PA high-drive for N outputs: 0x%08x", hd);
+	} else if (!cfg->use_port_a &&
+	    (cfg->output_type == PWM_EM32_OUTPUT_N || cfg->output_type == PWM_EM32_OUTPUT_BOTH)) {
+		uint32_t hd = sys_read32(EM32_IO_HD_PB_CTRL_REG);
+		/* Set high-drive for PB11 (PWMA_N on PB11), PB13 (PWMB_N), PB15 (PWMC_N) */
+		hd |= (BIT(11) | BIT(13) | BIT(15));
+		sys_write32(hd, EM32_IO_HD_PB_CTRL_REG);
+		LOG_DBG("Enabled PB high-drive for N outputs: 0x%08x", hd);
+	}
+
 	/* Configure IP Share for PWM pin selection and N output routing */
 	pwm_em32_configure_pin_select(!cfg->use_port_a, cfg->output_type);
 

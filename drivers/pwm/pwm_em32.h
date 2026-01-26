@@ -62,6 +62,13 @@
 #define CLK_GATE_REG_ADDR       0x40030100
 #define PCLKG_PWM               0x13    /* PWM clock gating bit position */
 
+/* IO High Drive Control Registers (EM32 IOMUX block)
+ * 0x21C: IO_HD_PA_CTRL - PA high drive control (bit = pin number)
+ * 0x220: IO_HD_PB_CTRL - PB high drive control (bit = pin number)
+ */
+#define EM32_IO_HD_PA_CTRL_REG  0x4003021C
+#define EM32_IO_HD_PB_CTRL_REG  0x40030220
+
 /* PWM Source Channel Definitions (bit positions for enable) */
 #define PWM_CH_A                BIT(0)
 #define PWM_CH_B                BIT(1)

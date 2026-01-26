@@ -17,6 +17,8 @@
 #include <zephyr/device.h>
 #include <zephyr/drivers/pwm.h>
 #include <zephyr/logging/log.h>
+#include <zephyr/sys/sys_io.h>
+#include <zephyr/sys/util.h>
 
 LOG_MODULE_REGISTER(pwm_sample, LOG_LEVEL_INF);
 
@@ -48,6 +50,20 @@ int main(void)
 	if (!device_is_ready(pwm_dev)) {
 		LOG_ERR("PWM device %s is not ready", pwm_dev->name);
 		return -ENODEV;
+	}
+
+	/* Ensure high-drive enabled for PA3 (PWMB_N) when running on Port A N-output.
+	 * IO_HD_PA_CTRL register: one bit per PA pin (bit = pin number)
+	 */
+#ifndef EM32_IO_HD_PA_CTRL_REG
+#define EM32_IO_HD_PA_CTRL_REG 0x4003021C
+#endif
+
+	{
+		uint32_t hd = sys_read32(EM32_IO_HD_PA_CTRL_REG);
+		hd |= BIT(3); /* PA3 high-drive */
+		sys_write32(hd, EM32_IO_HD_PA_CTRL_REG);
+		LOG_INF("Enabled PA3 high-drive (IO_HD_PA_CTRL=0x%08x)", hd);
 	}
 
 	LOG_INF("PWM device %s is ready", pwm_dev->name);

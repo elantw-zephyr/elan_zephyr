@@ -7,20 +7,16 @@
  * @file
  * @brief GPIO driver for EM32F967 microcontroller (EM32-style)
  *
- * This driver provides GPIO functionality for the EM32F967 microcontroller
- * following EM32 driver architecture patterns while using EM32F967's actual
- * GPIO_IPType register structure.
+ * This driver provides GPIO functionality for the EM32F967 microcontroller.
  *
  * Key Features:
  * - EM32-style driver architecture and API patterns
- * - Native EM32F967 GPIO_IPType register structure
  * - Proper pinctrl coordination for pin multiplexing
  * - Complete interrupt support with all trigger types
  * - Clock control and power management
  *
  * IMPORTANT: Register Mapping Note
- * The EM32 GPIO hardware follows ARM Cortex-M GPIO specification, but the register
- * names in GPIO_IPType structure are misleading:
+ * The EM32 GPIO hardware follows ARM Cortex-M GPIO specification.
  * - DATAOUTSET (0x10) is actually OUTENSET (Output Enable Set)
  * - DATAOUTCLR (0x14) is actually OUTENCLR (Output Enable Clear)
  * - DATAOUT (0x04) controls the actual output values
@@ -35,44 +31,65 @@
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/drivers/gpio/gpio_utils.h>
 #include <zephyr/drivers/clock_control.h>
+#include "../../include/zephyr/drivers/clock_control/clock_control_em32_ahb.h"
 #include <zephyr/dt-bindings/gpio/gpio.h>
 #include <zephyr/irq.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/sys/util.h>
+#include <zephyr/sys/sys_io.h>
 #include <zephyr/pm/device.h>
 #include <zephyr/pm/device_runtime.h>
 
 #include <soc.h>
+#include "gpio_em32.h"
+/* Use SOC-level EM32 definitions (CLK gating enum, etc.) */
+#include <elan_em32.h>
 
 #include "em32f967.h" /* TODO: remove em32f967.h */
 #include "soc_967.h" /* TODO: remove soc_967.h and elan_em32.h */
 
 LOG_MODULE_REGISTER(gpio_em32, CONFIG_GPIO_LOG_LEVEL);
 
-/* EM32F967 GPIO Register Structure is defined in soc_967.h */
+/* Forward declaration so helper functions can accept pointer to config
+ * before the full struct is defined later in this file.
+ */
+struct gpio_em32_config;
 
-/* EM32F967 GPIO Base Addresses */
-#define EM32_GPIOA_BASE 0x40020000
-#define EM32_GPIOB_BASE 0x40021000
+/* GPIO register offsets (EM32F967) */
+#define GPIO_DATA_OFFSET            0x00
+#define GPIO_DATAOUT_OFFSET         0x04
+#define GPIO_DATAOUTSET_OFFSET      0x10
+#define GPIO_DATAOUTCLR_OFFSET      0x14
+#define GPIO_ALTFUNCSET_OFFSET      0x18
+#define GPIO_ALTFUNCCLR_OFFSET      0x1C
+#define GPIO_INTENSET_OFFSET        0x20
+#define GPIO_INTENCLR_OFFSET        0x24
+#define GPIO_INTTYPEEDGESET_OFFSET  0x28
+#define GPIO_INTTYPEEDGECLR_OFFSET  0x2C
+#define GPIO_INTPOLSET_OFFSET       0x30
+#define GPIO_INTPOLCLR_OFFSET       0x34
+#define GPIO_INTSTATUSANDCLR_OFFSET 0x38
 
-/* EM32F967 IOMUX Control Registers */
-#define EM32_IOMUXPACTRL_REG  0x40030200 /* PA[7:0] control */
-#define EM32_IOMUXPACTRL2_REG 0x40030204 /* PA[15:8] control */
-#define EM32_IOMUXPBCTRL_REG  0x40030208 /* PB[7:0] control */
-#define EM32_IOMUXPBCTRL2_REG 0x4003020C /* PB[15:8] control */
+/* Sysctrl-relative offsets (sysctrl base comes from DTS: syscon@40030000) */
+#define EM32_IOMUXPACTRL_OFFSET   0x200 /* PA[7:0] control */
+#define EM32_IOMUXPACTRL2_OFFSET  0x204 /* PA[15:8] control */
+#define EM32_IOMUXPBCTRL_OFFSET   0x208 /* PB[7:0] control */
+#define EM32_IOMUXPBCTRL2_OFFSET  0x20C /* PB[15:8] control */
 
 /* EM32F967 Pull-up/Pull-down Control Registers */
-#define EM32_IOPUPACTRL_REG 0x40030214 /* PA pull control */
-#define EM32_IOPUPBCTRL_REG 0x40030218 /* PB pull control */
+#define EM32_IOPUPACTRL_OFFSET 0x214 /* PA pull control */
+#define EM32_IOPUPBCTRL_OFFSET 0x218 /* PB pull control */
+
+/* EM32F967 High Drive Control Registers */
+#define EM32_IO_HD_PA_CTRL_OFFSET 0x21C /* PA high drive control */
+#define EM32_IO_HD_PB_CTRL_OFFSET 0x220 /* PB high drive control */
 
 /* EM32F967 Open Drain Control Registers */
-#define EM32_IOODEPACTRL_REG 0x4003022C /* PA open drain */
-#define EM32_IOODEPBCTRL_REG 0x40030230 /* PB open drain */
+#define EM32_IOODEPACTRL_OFFSET 0x22C /* PA open drain */
+#define EM32_IOODEPBCTRL_OFFSET 0x230 /* PB open drain */
 
-/* EM32F967 Clock Gating Control */
-#define EM32_CLKGATEREG 0x40030100 /* Clock Gating Control Register */
-#define HCLKG_GPIOA     0x01       /* GPIOA Clock Enable (bit 1) */
-#define HCLKG_GPIOB     0x02       /* GPIOB Clock Enable (bit 2) */
+/* EM32F967 Clock Gating Control (sysctrl-relative) */
+#define EM32_CLKGATE_OFFSET 0x100 /* Clock Gating Control Register */
 
 /* GPIO MUX Values - From EM32F967 specification */
 #define EM32_GPIO_MUX_GPIO 0x00 /* GPIO function */
@@ -85,39 +102,7 @@ LOG_MODULE_REGISTER(gpio_em32, CONFIG_GPIO_LOG_LEVEL);
 #define EM32_GPIO_PUPD_PULLUP   0x01 /* Pull-up */
 #define EM32_GPIO_PUPD_PULLDOWN 0x02 /* Pull-down */
 
-/* Register access macros */
-#define REG32(addr) (*((volatile uint32_t *)(addr)))
-
-/**
- * @brief Enable GPIO clock for specified port
- *
- * @param port GPIO port number (0=PORTA, 1=PORTB)
- * @return 0 on success, negative errno on failure
- */
-static int em32_gpio_enable_clock(uint32_t port)
-{
-	uint32_t clk_bit;
-	uint32_t clkgate_reg;
-
-	/* Determine clock bit for the port */
-	if (port == 0) {
-		clk_bit = HCLKG_GPIOA;
-	} else if (port == 1) {
-		clk_bit = HCLKG_GPIOB;
-	} else {
-		return -EINVAL;
-	}
-
-	/* Read current clock gating register */
-	clkgate_reg = REG32(EM32_CLKGATEREG);
-
-	/* Clear the gating bit to enable the clock */
-	clkgate_reg &= ~(1 << clk_bit);
-	REG32(EM32_CLKGATEREG) = clkgate_reg;
-
-	LOG_DBG("Enabled clock for GPIO port %d (bit %d)", port, clk_bit);
-	return 0;
-}
+/* Use Zephyr clock_control API via the EM32 AHB clock driver */
 
 /* EM32-style clock control structure */
 struct em32_pclken {
@@ -130,7 +115,11 @@ struct gpio_em32_config {
 	/* gpio_driver_config needs to be first */
 	struct gpio_driver_config common;
 	/* GPIO port base address */
-	GPIO_IPType *base;
+	uint32_t base;
+	/* sysctrl (syscon) base address for IOMUX / pupd / hd / clk gate */
+	uint32_t sysctrl_base;
+	/* Clock device (from DT `clocks` phandle) */
+	const struct device *clock_dev;
 	/* Port identifier (0=PORTA, 1=PORTB) */
 	uint32_t port;
 	/* Clock control */
@@ -154,7 +143,7 @@ struct gpio_em32_data {
 /**
  * @brief Configure pin multiplexing (similar to EM32 alternate function)
  */
-static int em32_gpio_configure_mux(uint32_t port, uint32_t pin, uint32_t mux)
+static int em32_gpio_configure_mux(const struct gpio_em32_config *config, uint32_t pin, uint32_t mux)
 {
 	uint32_t reg_addr;
 	uint32_t shift;
@@ -162,69 +151,106 @@ static int em32_gpio_configure_mux(uint32_t port, uint32_t pin, uint32_t mux)
 	uint32_t reg_val;
 
 	/* Determine register address based on port and pin */
-	if (port == 0) { /* PORTA */
-		reg_addr = (pin < 8) ? EM32_IOMUXPACTRL_REG : EM32_IOMUXPACTRL2_REG;
+	if (config->port == 0) { /* PORTA */
+		reg_addr = config->sysctrl_base + ((pin < 8) ? EM32_IOMUXPACTRL_OFFSET : EM32_IOMUXPACTRL2_OFFSET);
 		shift = (pin % 8) * 4;
 	} else { /* PORTB */
-		reg_addr = (pin < 8) ? EM32_IOMUXPBCTRL_REG : EM32_IOMUXPBCTRL2_REG;
+		reg_addr = config->sysctrl_base + ((pin < 8) ? EM32_IOMUXPBCTRL_OFFSET : EM32_IOMUXPBCTRL2_OFFSET);
 		shift = (pin % 8) * 4;
 	}
 
 	mask = 0x7 << shift; /* 3-bit mask */
 
-	reg_val = REG32(reg_addr);
+	reg_val = sys_read32(reg_addr);
 	reg_val = (reg_val & ~mask) | ((mux & 0x7) << shift);
-	REG32(reg_addr) = reg_val;
+	sys_write32(reg_val, reg_addr);
 
-	LOG_DBG("Configured P%c%d MUX to %d", (port == 0) ? 'A' : 'B', pin, mux);
+	LOG_DBG("Configured P%c%d MUX to %d", (config->port == 0) ? 'A' : 'B', pin, mux);
 	return 0;
 }
 
 /**
  * @brief Configure pin pull-up/pull-down (similar to EM32 PUPDR)
  */
-static int em32_gpio_configure_pull(uint32_t port, uint32_t pin, uint32_t pull)
+static int em32_gpio_configure_pull(const struct gpio_em32_config *config, uint32_t pin, uint32_t pull)
 {
 	uint32_t reg_addr;
 	uint32_t shift;
 	uint32_t mask;
 	uint32_t reg_val;
 
-	reg_addr = (port == 0) ? EM32_IOPUPACTRL_REG : EM32_IOPUPBCTRL_REG;
+	reg_addr = config->sysctrl_base + ((config->port == 0) ? EM32_IOPUPACTRL_OFFSET : EM32_IOPUPBCTRL_OFFSET);
 	shift = pin * 2; /* 2 bits per pin */
 	mask = 0x3 << shift;
 
-	reg_val = REG32(reg_addr);
+	reg_val = sys_read32(reg_addr);
 	reg_val = (reg_val & ~mask) | ((pull & 0x3) << shift);
-	REG32(reg_addr) = reg_val;
+	sys_write32(reg_val, reg_addr);
 
-	LOG_DBG("Configured P%c%d pull to %d", (port == 0) ? 'A' : 'B', pin, pull);
+	LOG_DBG("Configured P%c%d pull to %d", (config->port == 0) ? 'A' : 'B', pin, pull);
 	return 0;
 }
 
 /**
  * @brief Configure pin open drain (similar to EM32 OTYPER)
  */
-static int em32_gpio_configure_open_drain(uint32_t port, uint32_t pin, bool open_drain)
+static int em32_gpio_configure_open_drain(const struct gpio_em32_config *config, uint32_t pin, bool open_drain)
 {
 	uint32_t reg_addr;
 	uint32_t pin_mask;
 	uint32_t reg_val;
 
-	reg_addr = (port == 0) ? EM32_IOODEPACTRL_REG : EM32_IOODEPBCTRL_REG;
+	reg_addr = config->sysctrl_base + ((config->port == 0) ? EM32_IOODEPACTRL_OFFSET : EM32_IOODEPBCTRL_OFFSET);
 	pin_mask = BIT(pin);
 
-	reg_val = REG32(reg_addr);
+	reg_val = sys_read32(reg_addr);
 	if (open_drain) {
 		reg_val |= pin_mask;
 	} else {
 		reg_val &= ~pin_mask;
 	}
-	REG32(reg_addr) = reg_val;
+	sys_write32(reg_val, reg_addr);
 
-	LOG_DBG("Configured P%c%d open drain: %s", (port == 0) ? 'A' : 'B', pin,
+	LOG_DBG("Configured P%c%d open drain: %s", (config->port == 0) ? 'A' : 'B', pin,
 		open_drain ? "enabled" : "disabled");
 	return 0;
+}
+
+/**
+ * @brief Configure pin high-drive (EM32F967 specific)
+ */
+static int em32_gpio_configure_high_drive(const struct gpio_em32_config *config, uint32_t pin, bool high_drive)
+{
+	uint32_t reg_addr;
+	uint32_t pin_mask;
+	uint32_t reg_val;
+
+	reg_addr = config->sysctrl_base + ((config->port == 0) ? EM32_IO_HD_PA_CTRL_OFFSET : EM32_IO_HD_PB_CTRL_OFFSET);
+	pin_mask = BIT(pin);
+
+	reg_val = sys_read32(reg_addr);
+	if (high_drive) {
+		reg_val |= pin_mask;
+	} else {
+		reg_val &= ~pin_mask;
+	}
+	sys_write32(reg_val, reg_addr);
+
+	LOG_DBG("Configured P%c%d high-drive: %s", (config->port == 0) ? 'A' : 'B', pin,
+		high_drive ? "enabled" : "disabled");
+	return 0;
+}
+
+static inline uint32_t em32_gpio_read(const struct device *dev, uint32_t offset)
+{
+	const struct gpio_em32_config *config = dev->config;
+	return sys_read32(config->base + offset);
+}
+
+static inline void em32_gpio_write(const struct device *dev, uint32_t offset, uint32_t value)
+{
+	const struct gpio_em32_config *config = dev->config;
+	sys_write32(value, config->base + offset);
 }
 
 /**
@@ -234,7 +260,6 @@ static int gpio_em32_pin_configure(const struct device *dev, gpio_pin_t pin, gpi
 {
 	const struct gpio_em32_config *config = dev->config;
 	struct gpio_em32_data *data = dev->data;
-	GPIO_IPType *gpio = config->base;
 	uint32_t pin_mask = BIT(pin);
 	int ret = 0;
 
@@ -259,13 +284,13 @@ static int gpio_em32_pin_configure(const struct device *dev, gpio_pin_t pin, gpi
 	}
 
 	/* Set pin MUX to GPIO function (equivalent to EM32 alternate function) */
-	ret = em32_gpio_configure_mux(config->port, pin, EM32_GPIO_MUX_GPIO);
+	ret = em32_gpio_configure_mux(config, pin, EM32_GPIO_MUX_GPIO);
 	if (ret < 0) {
 		return ret;
 	}
 
 	/* Set pin to GPIO mode (not alternate function mode) */
-	gpio->ALTFUNCCLR = pin_mask;
+	em32_gpio_write(dev, GPIO_ALTFUNCCLR_OFFSET, pin_mask);
 
 	/* Configure pin direction using ARM Cortex-M GPIO standard method */
 	/* According to ARM Cortex-M GPIO specification:
@@ -276,26 +301,44 @@ static int gpio_em32_pin_configure(const struct device *dev, gpio_pin_t pin, gpi
 	 */
 	if (flags & GPIO_OUTPUT) {
 		/* OUTPUT mode: Enable output direction using DATAOUTSET (actually OUTENSET) */
-		gpio->DATAOUTSET = pin_mask; /* Enable output direction */
+		em32_gpio_write(dev, GPIO_DATAOUTSET_OFFSET, pin_mask); /* Enable output direction */
 
 		/* Set initial output value using DATAOUT register */
+		uint32_t dout = em32_gpio_read(dev, GPIO_DATAOUT_OFFSET);
 		if (flags & GPIO_OUTPUT_INIT_HIGH) {
-			gpio->DATAOUT |= pin_mask; /* Set output high */
+			dout |= pin_mask; /* Set output high */
 		} else {
-			gpio->DATAOUT &= ~pin_mask; /* Set output low (default) */
+			dout &= ~pin_mask; /* Set output low (default) */
+		}
+		em32_gpio_write(dev, GPIO_DATAOUT_OFFSET, dout);
+
+		/* Enable high-drive for this pin if initial state requests HIGH.
+		 * Use IO_HD_PA_CTRL / IO_HD_PB_CTRL registers (one bit per pin).
+		 * We enable high-drive when `GPIO_OUTPUT_INIT_HIGH` is set so that
+		 * clients that want a strong HIGH level can request it. If you prefer
+		 * different semantics, we can change this to another flag or DT option.
+		 */
+		if (flags & GPIO_OUTPUT_INIT_HIGH) {
+			em32_gpio_configure_high_drive(config, pin, true);
+		} else {
+			/* Clear high-drive bit when output configured low (keep default) */
+			em32_gpio_configure_high_drive(config, pin, false);
 		}
 	} else {
 		/* INPUT mode: Disable output direction using DATAOUTCLR (actually OUTENCLR) */
-		gpio->DATAOUTCLR = pin_mask; /* Disable output direction (input mode) */
+		em32_gpio_write(dev, GPIO_DATAOUTCLR_OFFSET, pin_mask); /* Disable output direction (input mode) */
+
+		/* When switching to input, clear high-drive for safety */
+		em32_gpio_configure_high_drive(config, pin, false);
 	}
 
 	/* Configure pull-up/pull-down (EM32-style) */
 	if (flags & GPIO_PULL_UP) {
-		ret = em32_gpio_configure_pull(config->port, pin, EM32_GPIO_PUPD_PULLUP);
+		ret = em32_gpio_configure_pull(config, pin, EM32_GPIO_PUPD_PULLUP);
 	} else if (flags & GPIO_PULL_DOWN) {
-		ret = em32_gpio_configure_pull(config->port, pin, EM32_GPIO_PUPD_PULLDOWN);
+		ret = em32_gpio_configure_pull(config, pin, EM32_GPIO_PUPD_PULLDOWN);
 	} else {
-		ret = em32_gpio_configure_pull(config->port, pin, EM32_GPIO_PUPD_FLOATING);
+		ret = em32_gpio_configure_pull(config, pin, EM32_GPIO_PUPD_FLOATING);
 	}
 
 	if (ret < 0) {
@@ -304,9 +347,9 @@ static int gpio_em32_pin_configure(const struct device *dev, gpio_pin_t pin, gpi
 
 	/* Configure open drain if requested (EM32-style) */
 	if (flags & GPIO_OPEN_DRAIN) {
-		ret = em32_gpio_configure_open_drain(config->port, pin, true);
+		ret = em32_gpio_configure_open_drain(config, pin, true);
 	} else {
-		ret = em32_gpio_configure_open_drain(config->port, pin, false);
+		ret = em32_gpio_configure_open_drain(config, pin, false);
 	}
 
 	return ret;
@@ -317,10 +360,7 @@ static int gpio_em32_pin_configure(const struct device *dev, gpio_pin_t pin, gpi
  */
 static int gpio_em32_port_get_raw(const struct device *dev, uint32_t *value)
 {
-	const struct gpio_em32_config *config = dev->config;
-	GPIO_IPType *gpio = config->base;
-
-	*value = gpio->DATA;
+	*value = em32_gpio_read(dev, GPIO_DATA_OFFSET);
 	return 0;
 }
 
@@ -329,18 +369,16 @@ static int gpio_em32_port_get_raw(const struct device *dev, uint32_t *value)
  */
 static int gpio_em32_port_set_masked_raw(const struct device *dev, uint32_t mask, uint32_t value)
 {
-	const struct gpio_em32_config *config = dev->config;
-	GPIO_IPType *gpio = config->base;
 	uint32_t current_output;
 
 	/* Read current output state */
-	current_output = gpio->DATAOUT;
+	current_output = em32_gpio_read(dev, GPIO_DATAOUT_OFFSET);
 
 	/* Update only the masked bits */
 	current_output = (current_output & ~mask) | (value & mask);
 
 	/* Write back the updated value */
-	gpio->DATAOUT = current_output;
+	em32_gpio_write(dev, GPIO_DATAOUT_OFFSET, current_output);
 
 	return 0;
 }
@@ -350,11 +388,9 @@ static int gpio_em32_port_set_masked_raw(const struct device *dev, uint32_t mask
  */
 static int gpio_em32_port_set_bits_raw(const struct device *dev, uint32_t pins)
 {
-	const struct gpio_em32_config *config = dev->config;
-	GPIO_IPType *gpio = config->base;
-
-	/* Set the specified bits in DATAOUT register */
-	gpio->DATAOUT |= pins;
+	uint32_t dout = em32_gpio_read(dev, GPIO_DATAOUT_OFFSET);
+	dout |= pins;
+	em32_gpio_write(dev, GPIO_DATAOUT_OFFSET, dout);
 	return 0;
 }
 
@@ -363,11 +399,9 @@ static int gpio_em32_port_set_bits_raw(const struct device *dev, uint32_t pins)
  */
 static int gpio_em32_port_clear_bits_raw(const struct device *dev, uint32_t pins)
 {
-	const struct gpio_em32_config *config = dev->config;
-	GPIO_IPType *gpio = config->base;
-
-	/* Clear the specified bits in DATAOUT register */
-	gpio->DATAOUT &= ~pins;
+	uint32_t dout = em32_gpio_read(dev, GPIO_DATAOUT_OFFSET);
+	dout &= ~pins;
+	em32_gpio_write(dev, GPIO_DATAOUT_OFFSET, dout);
 	return 0;
 }
 
@@ -376,11 +410,9 @@ static int gpio_em32_port_clear_bits_raw(const struct device *dev, uint32_t pins
  */
 static int gpio_em32_port_toggle_bits(const struct device *dev, uint32_t pins)
 {
-	const struct gpio_em32_config *config = dev->config;
-	GPIO_IPType *gpio = config->base;
-
-	/* Toggle the specified bits in DATAOUT register */
-	gpio->DATAOUT ^= pins;
+	uint32_t dout = em32_gpio_read(dev, GPIO_DATAOUT_OFFSET);
+	dout ^= pins;
+	em32_gpio_write(dev, GPIO_DATAOUT_OFFSET, dout);
 
 	return 0;
 }
@@ -392,7 +424,6 @@ static int gpio_em32_pin_interrupt_configure(const struct device *dev, gpio_pin_
 					     enum gpio_int_mode mode, enum gpio_int_trig trig)
 {
 	const struct gpio_em32_config *config = dev->config;
-	GPIO_IPType *gpio = config->base;
 	uint32_t pin_mask = BIT(pin);
 
 	if (pin >= 16) {
@@ -400,7 +431,7 @@ static int gpio_em32_pin_interrupt_configure(const struct device *dev, gpio_pin_
 	}
 
 	/* Disable interrupt first */
-	gpio->INTENCLR = pin_mask;
+	em32_gpio_write(dev, GPIO_INTENCLR_OFFSET, pin_mask);
 
 	if (mode == GPIO_INT_MODE_DISABLED) {
 		return 0;
@@ -410,26 +441,26 @@ static int gpio_em32_pin_interrupt_configure(const struct device *dev, gpio_pin_
 	switch (trig) {
 	case GPIO_INT_TRIG_LOW:
 		if (mode == GPIO_INT_MODE_EDGE) {
-			gpio->INTTYPEEDGESET = pin_mask; /* Edge triggered */
-			gpio->INTPOLCLR = pin_mask;      /* Falling edge */
+			em32_gpio_write(dev, GPIO_INTTYPEEDGESET_OFFSET, pin_mask); /* Edge triggered */
+			em32_gpio_write(dev, GPIO_INTPOLCLR_OFFSET, pin_mask);      /* Falling edge */
 		} else {
-			gpio->INTTYPEEDGECLR = pin_mask; /* Level triggered */
-			gpio->INTPOLCLR = pin_mask;      /* Low level */
+			em32_gpio_write(dev, GPIO_INTTYPEEDGECLR_OFFSET, pin_mask); /* Level triggered */
+			em32_gpio_write(dev, GPIO_INTPOLCLR_OFFSET, pin_mask);      /* Low level */
 		}
 		break;
 	case GPIO_INT_TRIG_HIGH:
 		if (mode == GPIO_INT_MODE_EDGE) {
-			gpio->INTTYPEEDGESET = pin_mask; /* Edge triggered */
-			gpio->INTPOLSET = pin_mask;      /* Rising edge */
+			em32_gpio_write(dev, GPIO_INTTYPEEDGESET_OFFSET, pin_mask); /* Edge triggered */
+			em32_gpio_write(dev, GPIO_INTPOLSET_OFFSET, pin_mask);      /* Rising edge */
 		} else {
-			gpio->INTTYPEEDGECLR = pin_mask; /* Level triggered */
-			gpio->INTPOLSET = pin_mask;      /* High level */
+			em32_gpio_write(dev, GPIO_INTTYPEEDGECLR_OFFSET, pin_mask); /* Level triggered */
+			em32_gpio_write(dev, GPIO_INTPOLSET_OFFSET, pin_mask);      /* High level */
 		}
 		break;
 	case GPIO_INT_TRIG_BOTH:
 		/* EM32F967 doesn't support both edges directly, use rising edge */
-		gpio->INTTYPEEDGESET = pin_mask; /* Edge triggered */
-		gpio->INTPOLSET = pin_mask;      /* Rising edge */
+		em32_gpio_write(dev, GPIO_INTTYPEEDGESET_OFFSET, pin_mask); /* Edge triggered */
+		em32_gpio_write(dev, GPIO_INTPOLSET_OFFSET, pin_mask);      /* Rising edge */
 		LOG_WRN("Both edge trigger not fully supported, using rising edge");
 		break;
 	default:
@@ -437,12 +468,17 @@ static int gpio_em32_pin_interrupt_configure(const struct device *dev, gpio_pin_
 	}
 
 	/* Enable interrupt */
-	gpio->INTENSET = pin_mask;
+	em32_gpio_write(dev, GPIO_INTENSET_OFFSET, pin_mask);
 
 	LOG_DBG("Configured interrupt for port %d pin %d, mode %d, trig %d", config->port, pin,
 		mode, trig);
+	
+	uint32_t inten = em32_gpio_read(dev, GPIO_INTENSET_OFFSET);
+	uint32_t itype = em32_gpio_read(dev, GPIO_INTTYPEEDGESET_OFFSET);
+	uint32_t ipol = em32_gpio_read(dev, GPIO_INTPOLSET_OFFSET);
 	LOG_DBG("GPIO interrupt registers: INTENSET=0x%04X, INTTYPEEDGE=0x%04X, INTPOL=0x%04X",
-		gpio->INTENSET, gpio->INTTYPEEDGESET, gpio->INTPOLSET);
+		inten, itype, ipol);
+	
 
 	/* Debug: Show final interrupt configuration */
 	const char *trig_str = (trig == GPIO_INT_TRIG_LOW)    ? "LOW/FALLING"
@@ -472,17 +508,16 @@ static void gpio_em32_isr(const struct device *dev)
 {
 	const struct gpio_em32_config *config = dev->config;
 	struct gpio_em32_data *data = dev->data;
-	GPIO_IPType *gpio = config->base;
 	uint32_t int_status;
 
 	/* Read interrupt status */
-	int_status = gpio->INTSTATUSANDCLR;
+	int_status = em32_gpio_read(dev, GPIO_INTSTATUSANDCLR_OFFSET);
 
 	LOG_DBG("GPIO port %d interrupt, status: 0x%04X", config->port, int_status);
 
 	/* Clear interrupt status by writing 1 to the bits (RW1C register) */
 	if (int_status != 0) {
-		gpio->INTSTATUSANDCLR = int_status;
+		em32_gpio_write(dev, GPIO_INTSTATUSANDCLR_OFFSET, int_status);
 		LOG_DBG("GPIO port %d interrupt cleared, status was: 0x%04X", config->port,
 			int_status);
 	}
@@ -503,6 +538,85 @@ static const struct gpio_driver_api gpio_em32_driver_api = {
 	.manage_callback = gpio_em32_manage_callback,
 };
 
+/* ============================================================================
+ * Exported API for Pinctrl Driver (EM32-style integration)
+ * ============================================================================ */
+
+/**
+ * @brief Configure GPIO pin from pinctrl driver
+ *
+ * This function is called by the pinctrl driver to configure a GPIO pin
+ * with the specified multiplexing and electrical settings.
+ *
+ * @param dev GPIO port device (gpioa or gpiob)
+ * @param pin Pin number (0-15)
+ * @param conf Pin configuration (mode, type, speed, pull, drive)
+ * @param func Alternate function number (0=GPIO, 1-7=AF1-AF7)
+ * @return 0 on success, negative errno on failure
+ */
+int gpio_em32_configure(const struct device *dev, gpio_pin_t pin,
+			uint32_t conf, uint32_t func)
+{
+	const struct gpio_em32_config *config = dev->config;
+	const struct device *clk_dev = config->clock_dev;
+	struct elan_em32_clock_control_subsys clk_subsys;
+	int clk_ret;
+	int ret;
+
+	if (pin >= 16) {
+		LOG_ERR("Invalid pin number: %d", pin);
+		return -EINVAL;
+	}
+
+	LOG_DBG("gpio_em32_configure: port=%d pin=%d func=%d conf=0x%08X",
+		config->port, pin, func, conf);
+
+	/* Ensure clock is enabled for this GPIO port via Zephyr clock_control */
+	clk_subsys.clock_group = (config->port == 0) ? HCLKG_GPIOA : HCLKG_GPIOB;
+	LOG_DBG("clock_group=%d.", clk_subsys.clock_group);
+	clk_ret = clock_control_on(clk_dev, &clk_subsys);
+	if (clk_ret < 0) {
+		LOG_ERR("Turn on AHB clock fail %d.", clk_ret);
+		return clk_ret;
+	}
+
+	/* Configure pin MUX (IOMUX registers) */
+	ret = em32_gpio_configure_mux(config, pin, func);
+	if (ret < 0) {
+		LOG_ERR("Failed to configure MUX for P%c%d", 'A' + config->port, pin);
+		return ret;
+	}
+
+	/* Configure pull-up/pull-down from conf */
+	uint32_t pupd = (conf >> EM32_PINCFG_PUPDR_SHIFT) & 0x3;
+	ret = em32_gpio_configure_pull(config, pin, pupd);
+	if (ret < 0) {
+		LOG_ERR("Failed to configure pull for P%c%d", 'A' + config->port, pin);
+		return ret;
+	}
+
+	/* Configure open-drain from conf */
+	bool open_drain = (conf >> EM32_PINCFG_OTYPER_SHIFT) & 0x1;
+	ret = em32_gpio_configure_open_drain(config, pin, open_drain);
+	if (ret < 0) {
+		LOG_ERR("Failed to configure open-drain for P%c%d", 'A' + config->port, pin);
+		return ret;
+	}
+
+	/* Configure high-drive from conf (EM32-specific) */
+	bool high_drive = (conf >> EM32_PINCFG_DRIVE_SHIFT) & 0x1;
+	ret = em32_gpio_configure_high_drive(config, pin, high_drive);
+	if (ret < 0) {
+		LOG_ERR("Failed to configure high-drive for P%c%d", 'A' + config->port, pin);
+		return ret;
+	}
+
+	LOG_DBG("P%c%d configured: func=%d, pupd=%d, od=%d, hd=%d",
+		'A' + config->port, pin, func, pupd, open_drain, high_drive);
+
+	return 0;
+}
+
 /**
  * @brief Initialize GPIO device (EM32-style)
  */
@@ -510,16 +624,19 @@ static int gpio_em32_init(const struct device *dev)
 {
 	const struct gpio_em32_config *config = dev->config;
 	struct gpio_em32_data *data = dev->data;
-	GPIO_IPType *gpio = config->base;
-	int ret;
+	const struct device *clk_dev = config->clock_dev;
+	struct elan_em32_clock_control_subsys clk_subsys;
+	int clk_ret;
 
-	LOG_INF("Initializing EM32 GPIO port %d at 0x%08X", config->port, (uint32_t)gpio);
+	LOG_INF("Initializing EM32 GPIO port %d at 0x%08X", config->port, config->base);
 
-	/* Enable GPIO clock first - CRITICAL for EM32F967 */
-	ret = em32_gpio_enable_clock(config->port);
-	if (ret < 0) {
-		LOG_ERR("Failed to enable clock for GPIO port %d", config->port);
-		return ret;
+	/* Enable GPIO clock first */
+	clk_subsys.clock_group = (config->port == 0) ? HCLKG_GPIOA : HCLKG_GPIOB;
+	LOG_DBG("clock_group=%d.", clk_subsys.clock_group);
+	clk_ret = clock_control_on(clk_dev, &clk_subsys);
+	if (clk_ret < 0) {
+			LOG_ERR("Turn on AHB clock fail %d.", clk_ret);
+			return clk_ret;
 	}
 
 	/* Initialize data structure */
@@ -528,13 +645,13 @@ static int gpio_em32_init(const struct device *dev)
 
 	/* Initialize GPIO port */
 	/* Clear all alternate functions (set all pins as GPIO input by default) */
-	gpio->ALTFUNCCLR = 0xFFFF;
+	em32_gpio_write(dev, GPIO_ALTFUNCCLR_OFFSET, 0xFFFF);
 
 	/* Disable all interrupts */
-	gpio->INTENCLR = 0xFFFF;
+	em32_gpio_write(dev, GPIO_INTENCLR_OFFSET, 0xFFFF);
 
 	/* Clear any pending interrupts */
-	(void)gpio->INTSTATUSANDCLR;
+	(void)em32_gpio_read(dev, GPIO_INTSTATUSANDCLR_OFFSET);
 
 	/* Configure interrupt */
 	config->irq_config_func(dev);
@@ -562,7 +679,9 @@ static int gpio_em32_init(const struct device *dev)
 			{                                                                          \
 				.port_pin_mask = GPIO_PORT_PIN_MASK_FROM_DT_INST(n),               \
 			},                                                                         \
-		.base = (GPIO_IPType *)DT_INST_REG_ADDR(n),                                        \
+		.base = DT_INST_REG_ADDR(n),                                        \
+		.sysctrl_base = DT_REG_ADDR(DT_NODELABEL(sysctrl)),\
+		.clock_dev = DEVICE_DT_GET(DT_INST_PHANDLE(n, clocks)),\
 		.port = DT_INST_PROP(n, port_id),                                                  \
 		.pclken =                                                                          \
 			{                                                                          \

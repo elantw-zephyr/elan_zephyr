@@ -150,6 +150,6 @@ static int uart_em32_init(const struct device *dev)
                                                                                                    \
 	DEVICE_DT_INST_DEFINE(index, uart_em32_init, NULL, /* PM control */                     \
 			      &uart_em32_data_##index, &uart_em32_config_##index,            \
-			      PRE_KERNEL_1, CONFIG_SERIAL_INIT_PRIORITY, &uart_em32_api);
+			      POST_KERNEL, CONFIG_SERIAL_INIT_PRIORITY, &uart_em32_api);
 
 DT_INST_FOREACH_STATUS_OKAY(UART_EM32_INIT)
