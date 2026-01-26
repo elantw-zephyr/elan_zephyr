@@ -7,10 +7,9 @@
 #include <zephyr/drivers/pinctrl.h>
 #include <soc.h>
 
-#define _DEVICE_ID "elan967_uart_dev"
-
-#define UART_STATE_TX_BUSY_MASK    BIT(0)
-#define UART_STATE_RX_RDY_MASK     BIT(1)
+#define UART_STATE_TX_BUSY_MASK        BIT(0)
+#define UART_STATE_RX_RDY_MASK         BIT(1)
+#define UART_STATE_RX_BUF_OVERRUN_MASK BIT(3)
 
 /* EM32 UART register offsets - corrected per spec */
 #define UART_DATA_OFFSET           0x00
@@ -19,7 +18,7 @@
 #define UART_INTSTACLR_OFFSET      0x0C
 #define UART_BAUDDIV_OFFSET        0x10
 
-LOG_MODULE_REGISTER(elan967_uart_dev, CONFIG_UART_LOG_LEVEL);
+LOG_MODULE_REGISTER(uart_em32, CONFIG_UART_LOG_LEVEL);
 
 struct uart_em32_config {
 	uintptr_t base;                 // base address from DTS `reg`
@@ -71,7 +70,7 @@ static int uart_em32_uart_err_check(const struct device *dev)
 	uint32_t status = uart_em32_read(dev, UART_STATE_OFFSET);
 	int err = 0;
 
-	if (status & BIT(3)) { // RXBUFOVERRUN
+	if (status & UART_STATE_RX_BUF_OVERRUN_MASK) {
 		err |= UART_ERROR_OVERRUN;
 	}
 
@@ -99,7 +98,6 @@ static int uart_em32_init(const struct device *dev)
 	 */
 	ret = pinctrl_apply_state(cfg->pcfg, PINCTRL_STATE_DEFAULT);
 	if (ret < 0) {
-		LOG_ERR("Failed to apply pinctrl state, err=%d.", ret);
 		return ret;
 	}
 
@@ -117,13 +115,10 @@ static int uart_em32_init(const struct device *dev)
 	// Get APB Clock Rate
 	ret = clock_control_get_rate(cfg->clock_dev, NULL, &apb_clk_rate);
 	if (ret < 0) {
-		LOG_ERR("Fail to get apb clock rate, err=%d.", ret);
 		return ret;
 	}
-	LOG_DBG("apb_clk_rate=%d.", apb_clk_rate);
 
 	bauddiv = (apb_clk_rate + (baudrate / 2)) / baudrate;
-	LOG_DBG("baudrate=%d, bauddiv=%d.", baudrate, bauddiv);
 
 	if (bauddiv < 16) {
 		bauddiv = 16;
