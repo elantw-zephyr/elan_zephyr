@@ -17,6 +17,7 @@
 	aliases {
 		spi2 = &spi2;
 		watchdog0 = &wdt0;
+		clock0 = &clk_ahb_v2;
 	};
 
 	clocks {
