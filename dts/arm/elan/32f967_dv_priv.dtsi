@@ -50,6 +50,15 @@
 			status = "okay";
 		};
 	};
+	soc {
+		/* MIRC control */
+		mircctrl: syscon@0x100a0000 {
+			compatible = "syscon";
+			reg = <0x100a0000 0x1000>;
+			reg-io-width = <4>;
+			status = "disabled";
+		};
+	};
 };
 
 &spi2 {
