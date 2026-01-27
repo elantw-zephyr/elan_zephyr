@@ -48,9 +48,7 @@ static int elan_em32_apb_clock_control_get_rate(const struct device *dev,
 	ARG_UNUSED(sys);
 
 	/* Get AHB Clock Rate */
-	ret = clock_control_get_rate(config->clock_device,
-				     CLOCK_CONTROL_SUBSYS_ALL,
-				     &ahb_clk_rate);
+	ret = clock_control_get_rate(config->clock_device, CLOCK_CONTROL_SUBSYS_ALL, &ahb_clk_rate);
 	if (ret) {
 		LOG_ERR("Fail to Get AHB Clock Rate, err=%d.", ret);
 		return ret;
@@ -82,18 +80,14 @@ static int elan_em32_apb_clock_control_init(const struct device *dev)
 	return 0;
 }
 
-#define EM32_APB_INST_INIT(inst)                                                \
-static const struct elan_em32_apb_clock_control_config em32_apb_config_##inst = {\
-	.clock_device = DEVICE_DT_GET(DT_INST_CLOCKS_CTLR(inst)),                \
-	.parent_gate_id = DT_INST_CLOCKS_CELL_BY_IDX(inst, 0, gate_id),              \
-};                                                                              \
-DEVICE_DT_INST_DEFINE(inst,                                                     \
-		elan_em32_apb_clock_control_init,                          \
-		NULL,                                                       \
-		NULL,                                                       \
-		&em32_apb_config_##inst,                                    \
-		PRE_KERNEL_1,                                               \
-		CONFIG_CLOCK_CONTROL_INIT_PRIORITY,                          \
-		&elan_em32_apb_clock_control_api)
+#define EM32_APB_INST_INIT(inst)                                                                   \
+	static const struct elan_em32_apb_clock_control_config em32_apb_config_##inst = {          \
+		.clock_device = DEVICE_DT_GET(DT_INST_CLOCKS_CTLR(inst)),                          \
+		.parent_gate_id = DT_INST_CLOCKS_CELL_BY_IDX(inst, 0, gate_id),                    \
+	};                                                                                         \
+	DEVICE_DT_INST_DEFINE(inst, elan_em32_apb_clock_control_init, NULL, NULL,                  \
+			      &em32_apb_config_##inst, PRE_KERNEL_1,                               \
+			      CONFIG_CLOCK_CONTROL_INIT_PRIORITY,                                  \
+			      &elan_em32_apb_clock_control_api)
 
 DT_INST_FOREACH_STATUS_OKAY(EM32_APB_INST_INIT)

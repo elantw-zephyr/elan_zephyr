@@ -22,7 +22,7 @@
 #define MIRC_32M_2_OFF   0x0080
 
 /* Field Masks for MIRC_CTRL */
-#define MIRC_TALL_MASK GENMASK(9, 0)     /* [9:0]    MIRC_Tall */
-#define MIRC_TV12_MASK GENMASK(12, 10)   /* [12:10]  MIRC_TV12 */
+#define MIRC_TALL_MASK GENMASK(9, 0)   /* [9:0]    MIRC_Tall */
+#define MIRC_TV12_MASK GENMASK(12, 10) /* [12:10]  MIRC_TV12 */
 
 #endif /* ZEPHYR_SOC_ELAN_EM32F967_SOC_INFOCTRL_H_ */
