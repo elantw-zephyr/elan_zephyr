@@ -249,12 +249,14 @@ static int em32_gpio_configure_high_drive(const struct gpio_em32_config *config,
 static inline uint32_t em32_gpio_read(const struct device *dev, uint32_t offset)
 {
 	const struct gpio_em32_config *config = dev->config;
+
 	return sys_read32(config->base + offset);
 }
 
 static inline void em32_gpio_write(const struct device *dev, uint32_t offset, uint32_t value)
 {
 	const struct gpio_em32_config *config = dev->config;
+
 	sys_write32(value, config->base + offset);
 }
 
@@ -311,6 +313,7 @@ static int gpio_em32_pin_configure(const struct device *dev, gpio_pin_t pin, gpi
 
 		/* Set initial output value using DATAOUT register */
 		uint32_t dout = em32_gpio_read(dev, GPIO_DATAOUT_OFFSET);
+
 		if (flags & GPIO_OUTPUT_INIT_HIGH) {
 			dout |= pin_mask; /* Set output high */
 		} else {
@@ -396,6 +399,7 @@ static int gpio_em32_port_set_masked_raw(const struct device *dev, uint32_t mask
 static int gpio_em32_port_set_bits_raw(const struct device *dev, uint32_t pins)
 {
 	uint32_t dout = em32_gpio_read(dev, GPIO_DATAOUT_OFFSET);
+
 	dout |= pins;
 	em32_gpio_write(dev, GPIO_DATAOUT_OFFSET, dout);
 	return 0;
@@ -407,6 +411,7 @@ static int gpio_em32_port_set_bits_raw(const struct device *dev, uint32_t pins)
 static int gpio_em32_port_clear_bits_raw(const struct device *dev, uint32_t pins)
 {
 	uint32_t dout = em32_gpio_read(dev, GPIO_DATAOUT_OFFSET);
+
 	dout &= ~pins;
 	em32_gpio_write(dev, GPIO_DATAOUT_OFFSET, dout);
 	return 0;
@@ -418,6 +423,7 @@ static int gpio_em32_port_clear_bits_raw(const struct device *dev, uint32_t pins
 static int gpio_em32_port_toggle_bits(const struct device *dev, uint32_t pins)
 {
 	uint32_t dout = em32_gpio_read(dev, GPIO_DATAOUT_OFFSET);
+
 	dout ^= pins;
 	em32_gpio_write(dev, GPIO_DATAOUT_OFFSET, dout);
 
@@ -487,6 +493,7 @@ static int gpio_em32_pin_interrupt_configure(const struct device *dev, gpio_pin_
 	uint32_t inten = em32_gpio_read(dev, GPIO_INTENSET_OFFSET);
 	uint32_t itype = em32_gpio_read(dev, GPIO_INTTYPEEDGESET_OFFSET);
 	uint32_t ipol = em32_gpio_read(dev, GPIO_INTPOLSET_OFFSET);
+
 	LOG_DBG("GPIO interrupt registers: INTENSET=0x%04X, INTTYPEEDGE=0x%04X, INTPOL=0x%04X",
 		inten, itype, ipol);
 
@@ -495,6 +502,7 @@ static int gpio_em32_pin_interrupt_configure(const struct device *dev, gpio_pin_
 			       : (trig == GPIO_INT_TRIG_HIGH) ? "HIGH/RISING"
 							      : "BOTH";
 	const char *mode_str = (mode == GPIO_INT_MODE_EDGE) ? "EDGE" : "LEVEL";
+
 	LOG_DBG("Final interrupt config: %s %s trigger", mode_str, trig_str);
 
 	return 0;
@@ -550,7 +558,8 @@ static const struct gpio_driver_api gpio_em32_driver_api = {
 
 /* ============================================================================
  * Exported API for Pinctrl Driver (EM32-style integration)
- * ============================================================================ */
+ * ============================================================================
+ */
 
 /**
  * @brief Configure GPIO pin from pinctrl driver
@@ -576,8 +585,7 @@ int gpio_em32_configure(const struct device *dev, gpio_pin_t pin, uint32_t conf,
 		return -EINVAL;
 	}
 
-	LOG_DBG("gpio_em32_configure: port=%d pin=%d func=%d conf=0x%08X", config->port, pin, func,
-		conf);
+	LOG_DBG("%s: port=%d pin=%d func=%d conf=0x%08X", __func__, config->port, pin, func, conf);
 
 	/* Ensure clock is enabled for this GPIO port via Zephyr clock_control */
 	clk_ret = clock_control_on(clk_dev, UINT_TO_POINTER(config->clock_gate_id));
@@ -595,6 +603,7 @@ int gpio_em32_configure(const struct device *dev, gpio_pin_t pin, uint32_t conf,
 
 	/* Configure pull-up/pull-down from conf */
 	uint32_t pupd = (conf >> EM32_PINCFG_PUPDR_SHIFT) & 0x3;
+
 	ret = em32_gpio_configure_pull(config, pin, pupd);
 	if (ret < 0) {
 		LOG_ERR("Failed to configure pull for P%c%d", 'A' + config->port, pin);
@@ -603,6 +612,7 @@ int gpio_em32_configure(const struct device *dev, gpio_pin_t pin, uint32_t conf,
 
 	/* Configure open-drain from conf */
 	bool open_drain = (conf >> EM32_PINCFG_OTYPER_SHIFT) & 0x1;
+
 	ret = em32_gpio_configure_open_drain(config, pin, open_drain);
 	if (ret < 0) {
 		LOG_ERR("Failed to configure open-drain for P%c%d", 'A' + config->port, pin);
@@ -611,6 +621,7 @@ int gpio_em32_configure(const struct device *dev, gpio_pin_t pin, uint32_t conf,
 
 	/* Configure high-drive from conf (EM32-specific) */
 	bool high_drive = (conf >> EM32_PINCFG_DRIVE_SHIFT) & 0x1;
+
 	ret = em32_gpio_configure_high_drive(config, pin, high_drive);
 	if (ret < 0) {
 		LOG_ERR("Failed to configure high-drive for P%c%d", 'A' + config->port, pin);

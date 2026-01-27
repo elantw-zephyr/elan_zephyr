@@ -9,7 +9,7 @@ config GPIO_EM32
 	depends on DT_HAS_ELAN_EM32_GPIO_ENABLED
 	help
 	  Enable GPIO driver for ELAN EM32F967 microcontroller.
-	  
+
 	  The EM32F967 has two GPIO ports (GPIOA and GPIOB), each with 16 pins.
 	  Each port supports:
 	  - Input/output direction control
