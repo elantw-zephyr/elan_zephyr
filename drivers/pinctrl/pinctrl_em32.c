@@ -50,7 +50,7 @@ static const size_t gpio_ports_cnt = ARRAY_SIZE(gpio_ports);
  * ============================================================================
  */
 
- /* Sysctrl base address obtained from device tree */
+/* Sysctrl base address obtained from device tree */
 static const uintptr_t em32_sysctrl_base = DT_REG_ADDR(DT_NODELABEL(sysctrl));
 
 /* Sysctrl-relative offsets (sysctrl base comes from DTS: syscon@40030000) */
@@ -132,8 +132,8 @@ static const struct em32_ioshare_config em32_ioshare_table[] = {
 	/* PWM configurations on Port B (PWM_S=1)
 	 * PB10-PB15 with AF1 require IP_Share[18]=1 for Port B PWM routing
 	 */
-	{EM32_PORT_B, 10, 15, EM32F967_AF1, EM32_IP_SHARE_PWM,
-	 BIT(EM32_IP_SHARE_PWM), BIT(EM32_IP_SHARE_PWM), "PWM_PB"},
+	{EM32_PORT_B, 10, 15, EM32F967_AF1, EM32_IP_SHARE_PWM, BIT(EM32_IP_SHARE_PWM),
+	 BIT(EM32_IP_SHARE_PWM), "PWM_PB"},
 };
 
 /**
@@ -161,10 +161,12 @@ static int em32_configure_ioshare(uint8_t port, uint8_t pin_num, uint32_t alt_fu
 		if (cfg->port == port && pin_num >= cfg->pin_start && pin_num <= cfg->pin_end &&
 		    cfg->alt_func == alt_func) {
 
-			ioshare_val = sys_read32((uint32_t)(em32_sysctrl_base + EM32_IOSHARE_OFFSET));
+			ioshare_val =
+				sys_read32((uint32_t)(em32_sysctrl_base + EM32_IOSHARE_OFFSET));
 			ioshare_val &= ~cfg->bit_mask;
 			ioshare_val |= cfg->bit_value;
-			sys_write32(ioshare_val, (uint32_t)(em32_sysctrl_base + EM32_IOSHARE_OFFSET));
+			sys_write32(ioshare_val,
+				    (uint32_t)(em32_sysctrl_base + EM32_IOSHARE_OFFSET));
 
 			LOG_DBG("Configured %s on P%c%d (IOShare: 0x%08X)", cfg->peripheral,
 				'A' + port, pin_num, ioshare_val);
@@ -253,8 +255,8 @@ int pinctrl_configure_pins(const pinctrl_soc_pin_t *pins, uint8_t pin_cnt, uintp
 			/* Delegate pin configuration to GPIO driver (EM32-style) */
 			ret = gpio_em32_configure(gpio_dev, pin_num, pin_cfg, alt_func);
 			if (ret < 0) {
-				LOG_ERR("Failed to configure P%c%d via GPIO driver: %d",
-					'A' + port, pin_num, ret);
+				LOG_ERR("Failed to configure P%c%d via GPIO driver: %d", 'A' + port,
+					pin_num, ret);
 				return ret;
 			}
 		} else {
@@ -270,8 +272,8 @@ int pinctrl_configure_pins(const pinctrl_soc_pin_t *pins, uint8_t pin_cnt, uintp
 		/* Handle IOShare for peripheral routing (EM32-specific) */
 		ret = em32_configure_ioshare(port, pin_num, alt_func);
 		if (ret < 0) {
-			LOG_ERR("Failed to configure IOShare for P%c%d: %d",
-				'A' + port, pin_num, ret);
+			LOG_ERR("Failed to configure IOShare for P%c%d: %d", 'A' + port, pin_num,
+				ret);
 			return ret;
 		}
 	}
