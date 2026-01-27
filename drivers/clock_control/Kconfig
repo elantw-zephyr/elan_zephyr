@@ -8,4 +8,4 @@
 # Clock controller drivers
 #
 
-rsource "Kconfig.elan"
+rsource "Kconfig.em32"
