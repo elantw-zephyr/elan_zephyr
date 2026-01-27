@@ -34,8 +34,8 @@ struct elan_em32_ahb_clock_control_config {
 /*
  * Configurations
  */
-static uint32_t ahb_count = 12000; // 12M Hz
-static bool g_dwt_ok = false;
+static uint32_t ahb_count = 12000; /* 12M Hz */
+static bool g_dwt_ok;
 
 static inline void early_delay_us(uint32_t us)
 {
@@ -336,6 +336,7 @@ void elan_em32_set_ahb_freq(const struct device *dev)
 		}
 
 		uint32_t mirc_tall, mirc_tv12;
+
 		switch (freq_src) {
 		case EM32_CLK_FREQ_IRCLOW12:
 			mirc_tall = ahb_em32_read_field(mircctrl_base,
@@ -455,8 +456,9 @@ void elan_em32_set_ahb_freq(const struct device *dev)
 			delay_1us();
 			while (ahb_em32_read_field(clkctrl_base,
 						   CLKCTRL_SYS_PLL_CTRL_OFF,
-						   CLKCTRL_SYS_PLL_STABLE) == 0)
-				;
+						   CLKCTRL_SYS_PLL_STABLE) == 0) {
+				; /* wait for SYSPLL to become stable */
+			}
 			delay_1us();
 			ahb_em32_write_field(sysctrl_base, SYSCTRL_SYS_REG_CTRL_OFF,
 						SYSCTRL_HCLK_SEL_MASK, 0x01);
@@ -486,8 +488,6 @@ void elan_em32_set_ahb_freq(const struct device *dev)
 				SYSCTRL_HCLK_DIV_MASK, pre_div);
 
 	ahb_count = elan_em32_get_ahb_freq(dev);
-
-	return;
 }
 
 static int elan_em32_ahb_clock_control_on(const struct device *dev,
@@ -541,7 +541,6 @@ static int elan_em32_ahb_clock_control_get_rate(const struct device *dev,
 	/* elan_em32_get_ahb_freq(dev) returns kHz; convert to Hz. */
 	uint32_t ahb_khz = elan_em32_get_ahb_freq(dev);
 	*rate = ahb_khz * 1000u;
-	// LOG_DBG("rate=%d (Hz).", *rate);
 
 	return 0;
 }
@@ -628,20 +627,20 @@ static int elan_em32_ahb_clock_control_init(const struct device *dev)
 
 #define EM32_AHB_INST_INIT(inst)                                                \
 static const struct elan_em32_ahb_clock_control_config em32_ahb_config_##inst = {\
-    .sysctrl_base   = DT_REG_ADDR(DT_NODELABEL(sysctrl)),                     \
-    .clkctrl_base   = DT_REG_ADDR(DT_NODELABEL(clkctrl)),                     \
-    .mircctrl_base   = DT_REG_ADDR(DT_NODELABEL(mircctrl)),                     \
-    .clock_source   = DT_INST_PROP(inst, clock_source),                        \
-    .clock_frequency= DT_INST_PROP(inst, clock_frequency),                     \
-    .clock_divider  = DT_INST_PROP(inst, clock_divider),                       \
+	.sysctrl_base    = DT_REG_ADDR(DT_NODELABEL(sysctrl)),                     \
+	.clkctrl_base    = DT_REG_ADDR(DT_NODELABEL(clkctrl)),                     \
+	.mircctrl_base   = DT_REG_ADDR(DT_NODELABEL(mircctrl)),                     \
+	.clock_source    = DT_INST_PROP(inst, clock_source),                        \
+	.clock_frequency = DT_INST_PROP(inst, clock_frequency),                     \
+	.clock_divider   = DT_INST_PROP(inst, clock_divider),                       \
 };                                                                              \
 DEVICE_DT_INST_DEFINE(inst,                                                     \
-              elan_em32_ahb_clock_control_init,                         \
-              NULL,                                                     \
-              NULL,                                                     \
-              &em32_ahb_config_##inst,                                   \
-              PRE_KERNEL_1,                                             \
-              CONFIG_CLOCK_CONTROL_INIT_PRIORITY,                        \
-              &elan_em32_ahb_clock_control_api)
+		elan_em32_ahb_clock_control_init,                         \
+		NULL,                                                     \
+		NULL,                                                     \
+		&em32_ahb_config_##inst,                                   \
+		PRE_KERNEL_1,                                             \
+		CONFIG_CLOCK_CONTROL_INIT_PRIORITY,                        \
+		&elan_em32_ahb_clock_control_api)
 
 DT_INST_FOREACH_STATUS_OKAY(EM32_AHB_INST_INIT);

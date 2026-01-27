@@ -21,8 +21,8 @@
 #define MIRC_28M_2_OFF   0x607c
 #define MIRC_32M_2_OFF   0x6080
 
-#define CLKCTRL_CLK_GATE_REG_OFF  0x0100 //TODO: move to sysctrl.h when upstream
-#define CLKCTRL_CLK_GATE_REG2_OFF 0x0104 //TODO: move to sysctrl.h when upstream
+#define CLKCTRL_CLK_GATE_REG_OFF  0x0100 /* TODO: move to sysctrl.h when upstream */
+#define CLKCTRL_CLK_GATE_REG2_OFF 0x0104 /* TODO: move to sysctrl.h when upstream */
 
 /* Field Masks for MIRC_CTRL */
 #define MIRC_TALL_MASK GENMASK(9, 0)     /* [9:0]    MIRC_Tall */
