@@ -69,4 +69,4 @@ child-binding:
         - "high-speed"
         - "very-high-speed"
       description: |
-        Pin speed. Default to low-speed. 
+        Pin speed. Default to low-speed.

@@ -27,7 +27,8 @@ LOG_MODULE_REGISTER(pinctrl_em32, LOG_LEVEL_INF);
 
 /* ============================================================================
  * GPIO Device References (EM32-style integration)
- * ============================================================================ */
+ * ============================================================================
+ */
 
 /**
  * @brief Array containing pointers to each GPIO port.
@@ -46,7 +47,8 @@ static const size_t gpio_ports_cnt = ARRAY_SIZE(gpio_ports);
 
 /* ============================================================================
  * Hardware Register Definitions
- * ============================================================================ */
+ * ============================================================================
+ */
 
  /* Sysctrl base address obtained from device tree */
 static const uintptr_t em32_sysctrl_base = DT_REG_ADDR(DT_NODELABEL(sysctrl));
@@ -57,7 +59,8 @@ static const uintptr_t em32_sysctrl_base = DT_REG_ADDR(DT_NODELABEL(sysctrl));
 
 /* ============================================================================
  * Hardware Constants
- * ============================================================================ */
+ * ============================================================================
+ */
 
 /* Pin configuration limits */
 #define EM32_MAX_PORTS          2U
@@ -70,7 +73,8 @@ static const uintptr_t em32_sysctrl_base = DT_REG_ADDR(DT_NODELABEL(sysctrl));
 
 /* ============================================================================
  * Pin Configuration Macros
- * ============================================================================ */
+ * ============================================================================
+ */
 
 /* Extract device tree pinmux information */
 #define EM32_DT_GET_PORT(pinmux) EM32F967_DT_PINMUX_PORT(pinmux)
@@ -79,7 +83,8 @@ static const uintptr_t em32_sysctrl_base = DT_REG_ADDR(DT_NODELABEL(sysctrl));
 
 /* ============================================================================
  * IOShare Configuration (Peripheral Multiplexing)
- * ============================================================================ */
+ * ============================================================================
+ */
 
 /**
  * @brief IOShare configuration table entry
@@ -177,7 +182,8 @@ static int em32_configure_ioshare(uint8_t port, uint8_t pin_num, uint32_t alt_fu
 
 /* ============================================================================
  * Public API Implementation (EM32-style GPIO delegation)
- * ============================================================================ */
+ * ============================================================================
+ */
 
 /**
  * @brief Configure multiple pins according to pinctrl state
@@ -276,7 +282,8 @@ int pinctrl_configure_pins(const pinctrl_soc_pin_t *pins, uint8_t pin_cnt, uintp
 
 /* ============================================================================
  * Driver Initialization and Utilities
- * ============================================================================ */
+ * ============================================================================
+ */
 
 /**
  * @brief Initialize the EM32F967 pinctrl driver
