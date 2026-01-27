@@ -41,11 +41,6 @@
 
 #include <soc.h>
 #include "gpio_em32.h"
-/* Use SOC-level EM32 definitions (CLK gating enum, etc.) */
-#include <elan_em32.h>
-
-#include "em32f967.h" /* TODO: remove em32f967.h */
-#include "soc_967.h" /* TODO: remove soc_967.h and elan_em32.h */
 
 LOG_MODULE_REGISTER(gpio_em32, CONFIG_GPIO_LOG_LEVEL);
 
