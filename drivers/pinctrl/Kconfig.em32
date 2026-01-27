@@ -14,7 +14,7 @@ config PINCTRL_EM32
 if PINCTRL_EM32
 
 config PINCTRL_EM32_DEBUG
-	bool "Enable EM32F967 pin control debug features"
+	bool "EM32F967 pin control debug features"
 	default n
 	help
 	  Enable debug features for EM32F967 pin control driver.
