@@ -1,7 +1,12 @@
 # Copyright (c) 2026 Elan Microelectronics Corp.
 # SPDX-License-Identifier: Apache-2.0
 
-description: Elan eM32F967 APB Clock Controller Node (v2, gate specifier)
+description: |
+  Elan EM32 APB Clock Controller (v2).
+
+  The clock specifier has one cell, gate-id, which selects the APB
+  peripheral clock gate. Use EM32_GATE_NONE as gate-id when only a parent
+  clock reference is needed and no hardware gate exists.
 
 compatible: "elan,em32-apb-v2"
 
@@ -17,5 +22,20 @@ properties:
     const: 1
 
 clock-cells:
-  - gate
+  - gate-id
 
+examples:
+  - |
+    clk_apb: clk-apb {
+        compatible = "elan,em32-apb-v2", "elan,em32-apb";
+        #clock-cells = <1>;
+        clocks = <&clk_ahb EM32_GATE_NONE>;
+        status = "okay";
+    };
+
+    pwm0: pwm@40006000 {
+        compatible = "elan,em32-pwm";
+        reg = <0x40006000 0x1000>;
+        clocks = <&clk_apb EM32_GATE_PCLKG_PWM>;
+        status = "okay";
+    };

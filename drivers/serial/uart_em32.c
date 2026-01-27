@@ -23,7 +23,7 @@ LOG_MODULE_REGISTER(uart_em32, CONFIG_UART_LOG_LEVEL);
 struct uart_em32_config {
 	uintptr_t base;                 // base address from DTS `reg`
 	const struct device *clock_dev; // clock device reference from DTS "clocks" property
-	uint32_t clock_gate;
+	uint32_t clock_gate_id;
 	const struct pinctrl_dev_config *pcfg;
 };
 
@@ -107,7 +107,7 @@ static int uart_em32_init(const struct device *dev)
         return -ENODEV;
     }
 
-    ret = clock_control_on(cfg->clock_dev, UINT_TO_POINTER(cfg->clock_gate));
+    ret = clock_control_on(cfg->clock_dev, UINT_TO_POINTER(cfg->clock_gate_id));
     if (ret) {
         return ret;
     }
@@ -140,7 +140,7 @@ static int uart_em32_init(const struct device *dev)
 	static const struct uart_em32_config uart_em32_config_##index = {                    \
 		.base = DT_INST_REG_ADDR(index),                                                   \
 		.clock_dev = DEVICE_DT_GET(DT_INST_CLOCKS_CTLR(index)),                        \
-		.clock_gate = DT_INST_CLOCKS_CELL_BY_IDX(index, 0, gate),                        \
+		.clock_gate_id = DT_INST_CLOCKS_CELL_BY_IDX(index, 0, gate_id),                        \
 		.pcfg = PINCTRL_DT_INST_DEV_CONFIG_GET(index),                                     \
 	};                                                                                         \
                                                                                                    \

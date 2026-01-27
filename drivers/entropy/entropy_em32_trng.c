@@ -47,7 +47,7 @@ LOG_MODULE_REGISTER(entropy_em32_trng, CONFIG_ENTROPY_LOG_LEVEL);
 struct em32_trng_config {
 	uintptr_t base;
 	const struct device *clock_dev;
-	uint32_t clock_gate;
+	uint32_t clock_gate_id;
 };
 
 struct em32_trng_data {
@@ -130,7 +130,7 @@ static int em32_trng_init(const struct device *dev)
 			return -ENODEV;
 		}
 
-		ret = clock_control_on(apb_clk_dev, UINT_TO_POINTER(cfg->clock_gate));
+		ret = clock_control_on(apb_clk_dev, UINT_TO_POINTER(cfg->clock_gate_id));
 		if (ret < 0) {
 			LOG_ERR("Turn on apb clock fail %d.", ret);
 			return ret;
@@ -259,7 +259,7 @@ static int em32_trng_collect_cycle(const struct device *dev, uint8_t *buffer)
 	static const struct em32_trng_config em32_trng_config_##inst = { \
 		.base = DT_INST_REG_ADDR(inst), \
 		.clock_dev = DEVICE_DT_GET(DT_INST_CLOCKS_CTLR(inst)), \
-		.clock_gate = DT_INST_CLOCKS_CELL_BY_IDX(inst, 0, gate), \
+		.clock_gate_id = DT_INST_CLOCKS_CELL_BY_IDX(inst, 0, gate_id), \
 	}; \
     DEVICE_DT_INST_DEFINE(inst, em32_trng_init, NULL, &em32_trng_data_##inst, \
     &em32_trng_config_##inst, POST_KERNEL, CONFIG_ENTROPY_EM32_TRNG_INIT_PRIORITY, &em32_trng_api);

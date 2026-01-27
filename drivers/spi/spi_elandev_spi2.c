@@ -143,7 +143,7 @@ LOG_MODULE_REGISTER(spi_elandev, CONFIG_SPI_LOG_LEVEL);
 struct spi_elandev_config {
 	uintptr_t base;                 // base address from DTS `reg`
 	const struct device *clock_dev; // clock device reference from DTS "clocks" property
-	uint32_t clock_gate;
+	uint32_t clock_gate_id;
 	const struct pinctrl_dev_config *pcfg;
 };
 
@@ -203,7 +203,7 @@ static int spi_pl022_configure(const struct device *dev, const struct spi_config
 	/* Enable clock to specified peripheral if clock device is available */
 	if (apb_clk_dev != NULL) {
 		/* Enable clock to specified peripheral */
-		ret = clock_control_on(apb_clk_dev, UINT_TO_POINTER(cfg->clock_gate));
+		ret = clock_control_on(apb_clk_dev, UINT_TO_POINTER(cfg->clock_gate_id));
 		if (ret < 0) {
 			LOG_ERR("Turn on apb clock fail %d.", ret);
 			return ret;
@@ -454,7 +454,7 @@ static int spi_e967_init(const struct device *dev)
 	static const struct spi_elandev_config spi_elandev_config_##index = {                      \
 		.base = DT_INST_REG_ADDR(index),                                                   \
 		.clock_dev = DEVICE_DT_GET(DT_INST_CLOCKS_CTLR(index)),                        \
-		.clock_gate = DT_INST_CLOCKS_CELL_BY_IDX(index, 0, gate),                        \
+		.clock_gate_id = DT_INST_CLOCKS_CELL_BY_IDX(index, 0, gate_id),                        \
 		.pcfg = PINCTRL_DT_INST_DEV_CONFIG_GET(index),                                     \
 	};                                                                                         \
                                                                                                    \

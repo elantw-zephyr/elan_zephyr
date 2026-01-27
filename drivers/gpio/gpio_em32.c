@@ -119,7 +119,8 @@ struct gpio_em32_config {
 	uint32_t sysctrl_base;
 	/* Clock device (from DT `clocks` phandle) */
 	const struct device *clock_dev;
-	uint32_t clock_gate;
+	/* Clock gate id (from DT `gate-id` cells) */
+	uint32_t clock_gate_id;
 	/* Port identifier (0=PORTA, 1=PORTB) */
 	uint32_t port;
 	/* Clock control */
@@ -571,7 +572,7 @@ int gpio_em32_configure(const struct device *dev, gpio_pin_t pin,
 		config->port, pin, func, conf);
 
 	/* Ensure clock is enabled for this GPIO port via Zephyr clock_control */
-	clk_ret = clock_control_on(clk_dev, UINT_TO_POINTER(config->clock_gate));
+	clk_ret = clock_control_on(clk_dev, UINT_TO_POINTER(config->clock_gate_id));
 	if (clk_ret < 0) {
 		LOG_ERR("Turn on AHB clock fail %d.", clk_ret);
 		return clk_ret;
@@ -627,7 +628,7 @@ static int gpio_em32_init(const struct device *dev)
 	LOG_INF("Initializing EM32 GPIO port %d at 0x%08X", config->port, config->base);
 
 	/* Enable GPIO clock first */
-	clk_ret = clock_control_on(clk_dev, UINT_TO_POINTER(config->clock_gate));
+	clk_ret = clock_control_on(clk_dev, UINT_TO_POINTER(config->clock_gate_id));
 	if (clk_ret < 0) {
 			LOG_ERR("Turn on AHB clock fail %d.", clk_ret);
 			return clk_ret;
@@ -676,7 +677,7 @@ static int gpio_em32_init(const struct device *dev)
 		.base = DT_INST_REG_ADDR(n),                                        \
 		.sysctrl_base = DT_REG_ADDR(DT_NODELABEL(sysctrl)),\
 		.clock_dev = DEVICE_DT_GET(DT_INST_CLOCKS_CTLR(n)),\
-		.clock_gate = DT_INST_CLOCKS_CELL_BY_IDX(n, 0, gate),\
+		.clock_gate_id = DT_INST_CLOCKS_CELL_BY_IDX(n, 0, gate_id),\
 		.port = DT_INST_PROP(n, port_id),                                                  \
 		.pclken =                                                                          \
 			{                                                                          \

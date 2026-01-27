@@ -52,7 +52,7 @@ LOG_MODULE_REGISTER(wdt_em32, CONFIG_WDT_LOG_LEVEL);
 struct wdt_em32_config {
     uint32_t base;
     const struct device *clock_dev;
-	uint32_t clock_gate;
+	uint32_t clock_gate_id;
 };
 
 struct wdt_em32_data {
@@ -315,7 +315,7 @@ static int wdt_em32_init(const struct device *dev)
             return -ENODEV;
         }
         
-        int ret = clock_control_on(config->clock_dev, UINT_TO_POINTER(config->clock_gate));
+        int ret = clock_control_on(config->clock_dev, UINT_TO_POINTER(config->clock_gate_id));
         if (ret < 0) {
             LOG_ERR("WDT: Failed to enable clock: %d", ret);
             return ret;
@@ -351,7 +351,7 @@ static int wdt_em32_init(const struct device *dev)
     static const struct wdt_em32_config wdt_em32_config_##n = {	\
         .base = DT_INST_REG_ADDR(n),					\
         .clock_dev = DEVICE_DT_GET(DT_INST_CLOCKS_CTLR(n)),		\
-        .clock_gate = DT_INST_CLOCKS_CELL_BY_IDX(n, 0, gate), \
+        .clock_gate_id = DT_INST_CLOCKS_CELL_BY_IDX(n, 0, gate_id), \
     };									\
                                         \
     static struct wdt_em32_data wdt_em32_data_##n;			\
