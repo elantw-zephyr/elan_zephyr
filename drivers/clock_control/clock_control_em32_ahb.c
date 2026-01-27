@@ -13,6 +13,9 @@
 //#include <zephyr/dt-bindings/clock/em32_clock.h>
 #include <zephyr/dt-bindings/clock/em32_clock_upstream.h> /* tmp for upstream */
 
+#define SYSCTRL_CLK_GATE_REG_OFF  0x0100 /* TODO: move to sysctrl.h when upstream */
+#define SYSCTRL_CLK_GATE_REG2_OFF 0x0104 /* TODO: move to sysctrl.h when upstream */
+
 #include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(em32_ahb, CONFIG_LOG_DEFAULT_LEVEL);
 
@@ -187,8 +190,8 @@ static inline void em32_clk_gate_write(mm_reg_t base, uint32_t gate_idx,
 
 	if (em32_gate_is_all(gate_idx)) {
 		if (val == EM32_GATE_OPEN) {
-			sys_write32((uint32_t)EM32_GATE_OPEN, base + CLKCTRL_CLK_GATE_REG_OFF);
-			sys_write32((uint32_t)EM32_GATE_OPEN, base + CLKCTRL_CLK_GATE_REG2_OFF);
+			sys_write32((uint32_t)EM32_GATE_OPEN, base + SYSCTRL_CLK_GATE_REG_OFF);
+			sys_write32((uint32_t)EM32_GATE_OPEN, base + SYSCTRL_CLK_GATE_REG2_OFF);
 		} else {
 			/* Reject closing all gates to avoid system shutdown. */
 			LOG_WRN("Closing ALL gates is not supported");
@@ -197,8 +200,8 @@ static inline void em32_clk_gate_write(mm_reg_t base, uint32_t gate_idx,
 	}
 
 	uint32_t bit = (gate_idx <= 31u) ? gate_idx : (gate_idx - 32u);
-	uint32_t off = (gate_idx <= 31u) ? CLKCTRL_CLK_GATE_REG_OFF
-					 : CLKCTRL_CLK_GATE_REG2_OFF;
+	uint32_t off = (gate_idx <= 31u) ? SYSCTRL_CLK_GATE_REG_OFF
+					 : SYSCTRL_CLK_GATE_REG2_OFF;
 
 	ahb_em32_write_field(base, off, BIT(bit), (uint32_t)val);
 }
