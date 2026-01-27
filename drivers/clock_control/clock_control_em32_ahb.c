@@ -6,24 +6,19 @@
 
 #define DT_DRV_COMPAT elan_em32_ahb
 
-#include <zephyr/kernel.h>
 #include <zephyr/device.h>
 #include <zephyr/devicetree.h>
 #include <zephyr/drivers/clock_control.h>
 //#include <zephyr/dt-bindings/clock/em32_clock.h>
 #include <zephyr/dt-bindings/clock/em32_clock_upstream.h> /* tmp for upstream */
-
-#define SYSCTRL_CLK_GATE_REG_OFF  0x0100 /* TODO: move to sysctrl.h when upstream */
-#define SYSCTRL_CLK_GATE_REG2_OFF 0x0104 /* TODO: move to sysctrl.h when upstream */
-
+#include <zephyr/kernel.h>
+#include <zephyr/sys/util.h>
 #include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(em32_ahb, CONFIG_LOG_DEFAULT_LEVEL);
 
-#include <zephyr/sys/util.h>
-
-#include "soc_clkctrl.h"
-#include "soc_infoctrl.h"
-#include "soc_sysctrl.h"
+#include <soc_clkctrl.h>
+#include <soc_infoctrl.h>
+#include <soc_sysctrl.h>
 
 struct elan_em32_ahb_clock_control_config {
 	mm_reg_t sysctrl_base;
@@ -656,4 +651,4 @@ DEVICE_DT_INST_DEFINE(inst,                                                     
 		CONFIG_CLOCK_CONTROL_INIT_PRIORITY,                        \
 		&elan_em32_ahb_clock_control_api)
 
-DT_INST_FOREACH_STATUS_OKAY(EM32_AHB_INST_INIT);
+DT_INST_FOREACH_STATUS_OKAY(EM32_AHB_INST_INIT)
