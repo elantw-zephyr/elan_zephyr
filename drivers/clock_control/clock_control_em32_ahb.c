@@ -506,6 +506,11 @@ static int elan_em32_ahb_clock_control_on(const struct device *dev,
 		return 0;
 	}
 
+	if (clk_grp == EM32_GATE_NONE) {
+		/* No hardware gate: parent reference only */
+		return 0;
+	}
+
 	/* Accept known indices and the ALL marker. */
 	if ((clk_grp >= EM32_GATE_HCLKG_DMA) && (clk_grp <= EM32_GATE_PCLKG_SSP1)) {
 		/* Enabling a clock == open gate (clear the bit). */
@@ -526,6 +531,11 @@ static int elan_em32_ahb_clock_control_off(const struct device *dev,
 	/* Do not support closing ALL clocks; reject explicitly. */
 	if (sys == CLOCK_CONTROL_SUBSYS_ALL || clk_grp == EM32_GATE_PCLKG_ALL) {
 		return -ENOTSUP;
+	}
+
+	if (clk_grp == EM32_GATE_NONE) {
+		/* No hardware gate: parent reference only */
+		return 0;
 	}
 
 	if ((clk_grp >= EM32_GATE_HCLKG_DMA) && (clk_grp <= EM32_GATE_PCLKG_SSP1)) {

@@ -82,6 +82,7 @@
 #define EM32_GATE_HCLKF_GHM_SAD         0x2A
 #define EM32_GATE_HCLKF_GHM_M2D         0x2B
 #define EM32_GATE_PCLKG_SSP1            0x30
+#define EM32_GATE_NONE                  0xFFFE
 #define EM32_GATE_PCLKG_ALL             0xFFFF
 
 #endif /* __ZEPHYR_INCLUDE_DT_BINDINGS_CLOCK_ELAN_EM32_CLOCK_UPSTREAM_H__ */

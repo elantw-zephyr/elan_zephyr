@@ -30,7 +30,7 @@
 			 * Reference AHB v2 as APB source clock.
 			 * The specifier cell is a placeholder here.
 			 */
-			clocks = <&clk_ahb_v2 0>;
+			clocks = <&clk_ahb_v2 EM32_GATE_NONE>;
 			status = "okay";
 		};
 
