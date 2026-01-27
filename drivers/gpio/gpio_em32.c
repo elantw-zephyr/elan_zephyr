@@ -65,10 +65,10 @@ struct gpio_em32_config;
 #define GPIO_INTSTATUSANDCLR_OFFSET 0x38
 
 /* Sysctrl-relative offsets (sysctrl base comes from DTS: syscon@40030000) */
-#define EM32_IOMUXPACTRL_OFFSET   0x200 /* PA[7:0] control */
-#define EM32_IOMUXPACTRL2_OFFSET  0x204 /* PA[15:8] control */
-#define EM32_IOMUXPBCTRL_OFFSET   0x208 /* PB[7:0] control */
-#define EM32_IOMUXPBCTRL2_OFFSET  0x20C /* PB[15:8] control */
+#define EM32_IOMUXPACTRL_OFFSET  0x200 /* PA[7:0] control */
+#define EM32_IOMUXPACTRL2_OFFSET 0x204 /* PA[15:8] control */
+#define EM32_IOMUXPBCTRL_OFFSET  0x208 /* PB[7:0] control */
+#define EM32_IOMUXPBCTRL2_OFFSET 0x20C /* PB[15:8] control */
 
 /* EM32F967 Pull-up/Pull-down Control Registers */
 #define EM32_IOPUPACTRL_OFFSET 0x214 /* PA pull control */
@@ -139,7 +139,8 @@ struct gpio_em32_data {
 /**
  * @brief Configure pin multiplexing (similar to EM32 alternate function)
  */
-static int em32_gpio_configure_mux(const struct gpio_em32_config *config, uint32_t pin, uint32_t mux)
+static int em32_gpio_configure_mux(const struct gpio_em32_config *config, uint32_t pin,
+				   uint32_t mux)
 {
 	uint32_t reg_addr;
 	uint32_t shift;
@@ -148,10 +149,12 @@ static int em32_gpio_configure_mux(const struct gpio_em32_config *config, uint32
 
 	/* Determine register address based on port and pin */
 	if (config->port == 0) { /* PORTA */
-		reg_addr = config->sysctrl_base + ((pin < 8) ? EM32_IOMUXPACTRL_OFFSET : EM32_IOMUXPACTRL2_OFFSET);
+		reg_addr = config->sysctrl_base +
+			   ((pin < 8) ? EM32_IOMUXPACTRL_OFFSET : EM32_IOMUXPACTRL2_OFFSET);
 		shift = (pin % 8) * 4;
 	} else { /* PORTB */
-		reg_addr = config->sysctrl_base + ((pin < 8) ? EM32_IOMUXPBCTRL_OFFSET : EM32_IOMUXPBCTRL2_OFFSET);
+		reg_addr = config->sysctrl_base +
+			   ((pin < 8) ? EM32_IOMUXPBCTRL_OFFSET : EM32_IOMUXPBCTRL2_OFFSET);
 		shift = (pin % 8) * 4;
 	}
 
@@ -168,14 +171,16 @@ static int em32_gpio_configure_mux(const struct gpio_em32_config *config, uint32
 /**
  * @brief Configure pin pull-up/pull-down (similar to EM32 PUPDR)
  */
-static int em32_gpio_configure_pull(const struct gpio_em32_config *config, uint32_t pin, uint32_t pull)
+static int em32_gpio_configure_pull(const struct gpio_em32_config *config, uint32_t pin,
+				    uint32_t pull)
 {
 	uint32_t reg_addr;
 	uint32_t shift;
 	uint32_t mask;
 	uint32_t reg_val;
 
-	reg_addr = config->sysctrl_base + ((config->port == 0) ? EM32_IOPUPACTRL_OFFSET : EM32_IOPUPBCTRL_OFFSET);
+	reg_addr = config->sysctrl_base +
+		   ((config->port == 0) ? EM32_IOPUPACTRL_OFFSET : EM32_IOPUPBCTRL_OFFSET);
 	shift = pin * 2; /* 2 bits per pin */
 	mask = 0x3 << shift;
 
@@ -190,13 +195,15 @@ static int em32_gpio_configure_pull(const struct gpio_em32_config *config, uint3
 /**
  * @brief Configure pin open drain (similar to EM32 OTYPER)
  */
-static int em32_gpio_configure_open_drain(const struct gpio_em32_config *config, uint32_t pin, bool open_drain)
+static int em32_gpio_configure_open_drain(const struct gpio_em32_config *config, uint32_t pin,
+					  bool open_drain)
 {
 	uint32_t reg_addr;
 	uint32_t pin_mask;
 	uint32_t reg_val;
 
-	reg_addr = config->sysctrl_base + ((config->port == 0) ? EM32_IOODEPACTRL_OFFSET : EM32_IOODEPBCTRL_OFFSET);
+	reg_addr = config->sysctrl_base +
+		   ((config->port == 0) ? EM32_IOODEPACTRL_OFFSET : EM32_IOODEPBCTRL_OFFSET);
 	pin_mask = BIT(pin);
 
 	reg_val = sys_read32(reg_addr);
@@ -215,13 +222,15 @@ static int em32_gpio_configure_open_drain(const struct gpio_em32_config *config,
 /**
  * @brief Configure pin high-drive (EM32F967 specific)
  */
-static int em32_gpio_configure_high_drive(const struct gpio_em32_config *config, uint32_t pin, bool high_drive)
+static int em32_gpio_configure_high_drive(const struct gpio_em32_config *config, uint32_t pin,
+					  bool high_drive)
 {
 	uint32_t reg_addr;
 	uint32_t pin_mask;
 	uint32_t reg_val;
 
-	reg_addr = config->sysctrl_base + ((config->port == 0) ? EM32_IO_HD_PA_CTRL_OFFSET : EM32_IO_HD_PB_CTRL_OFFSET);
+	reg_addr = config->sysctrl_base +
+		   ((config->port == 0) ? EM32_IO_HD_PA_CTRL_OFFSET : EM32_IO_HD_PB_CTRL_OFFSET);
 	pin_mask = BIT(pin);
 
 	reg_val = sys_read32(reg_addr);
@@ -297,7 +306,8 @@ static int gpio_em32_pin_configure(const struct device *dev, gpio_pin_t pin, gpi
 	 */
 	if (flags & GPIO_OUTPUT) {
 		/* OUTPUT mode: Enable output direction using DATAOUTSET (actually OUTENSET) */
-		em32_gpio_write(dev, GPIO_DATAOUTSET_OFFSET, pin_mask); /* Enable output direction */
+		em32_gpio_write(dev, GPIO_DATAOUTSET_OFFSET,
+				pin_mask); /* Enable output direction */
 
 		/* Set initial output value using DATAOUT register */
 		uint32_t dout = em32_gpio_read(dev, GPIO_DATAOUT_OFFSET);
@@ -322,7 +332,8 @@ static int gpio_em32_pin_configure(const struct device *dev, gpio_pin_t pin, gpi
 		}
 	} else {
 		/* INPUT mode: Disable output direction using DATAOUTCLR (actually OUTENCLR) */
-		em32_gpio_write(dev, GPIO_DATAOUTCLR_OFFSET, pin_mask); /* Disable output direction (input mode) */
+		em32_gpio_write(dev, GPIO_DATAOUTCLR_OFFSET,
+				pin_mask); /* Disable output direction (input mode) */
 
 		/* When switching to input, clear high-drive for safety */
 		em32_gpio_configure_high_drive(config, pin, false);
@@ -437,20 +448,24 @@ static int gpio_em32_pin_interrupt_configure(const struct device *dev, gpio_pin_
 	switch (trig) {
 	case GPIO_INT_TRIG_LOW:
 		if (mode == GPIO_INT_MODE_EDGE) {
-			em32_gpio_write(dev, GPIO_INTTYPEEDGESET_OFFSET, pin_mask); /* Edge triggered */
-			em32_gpio_write(dev, GPIO_INTPOLCLR_OFFSET, pin_mask);      /* Falling edge */
+			em32_gpio_write(dev, GPIO_INTTYPEEDGESET_OFFSET,
+					pin_mask);                             /* Edge triggered */
+			em32_gpio_write(dev, GPIO_INTPOLCLR_OFFSET, pin_mask); /* Falling edge */
 		} else {
-			em32_gpio_write(dev, GPIO_INTTYPEEDGECLR_OFFSET, pin_mask); /* Level triggered */
-			em32_gpio_write(dev, GPIO_INTPOLCLR_OFFSET, pin_mask);      /* Low level */
+			em32_gpio_write(dev, GPIO_INTTYPEEDGECLR_OFFSET,
+					pin_mask);                             /* Level triggered */
+			em32_gpio_write(dev, GPIO_INTPOLCLR_OFFSET, pin_mask); /* Low level */
 		}
 		break;
 	case GPIO_INT_TRIG_HIGH:
 		if (mode == GPIO_INT_MODE_EDGE) {
-			em32_gpio_write(dev, GPIO_INTTYPEEDGESET_OFFSET, pin_mask); /* Edge triggered */
-			em32_gpio_write(dev, GPIO_INTPOLSET_OFFSET, pin_mask);      /* Rising edge */
+			em32_gpio_write(dev, GPIO_INTTYPEEDGESET_OFFSET,
+					pin_mask);                             /* Edge triggered */
+			em32_gpio_write(dev, GPIO_INTPOLSET_OFFSET, pin_mask); /* Rising edge */
 		} else {
-			em32_gpio_write(dev, GPIO_INTTYPEEDGECLR_OFFSET, pin_mask); /* Level triggered */
-			em32_gpio_write(dev, GPIO_INTPOLSET_OFFSET, pin_mask);      /* High level */
+			em32_gpio_write(dev, GPIO_INTTYPEEDGECLR_OFFSET,
+					pin_mask);                             /* Level triggered */
+			em32_gpio_write(dev, GPIO_INTPOLSET_OFFSET, pin_mask); /* High level */
 		}
 		break;
 	case GPIO_INT_TRIG_BOTH:
@@ -468,13 +483,12 @@ static int gpio_em32_pin_interrupt_configure(const struct device *dev, gpio_pin_
 
 	LOG_DBG("Configured interrupt for port %d pin %d, mode %d, trig %d", config->port, pin,
 		mode, trig);
-	
+
 	uint32_t inten = em32_gpio_read(dev, GPIO_INTENSET_OFFSET);
 	uint32_t itype = em32_gpio_read(dev, GPIO_INTTYPEEDGESET_OFFSET);
 	uint32_t ipol = em32_gpio_read(dev, GPIO_INTPOLSET_OFFSET);
 	LOG_DBG("GPIO interrupt registers: INTENSET=0x%04X, INTTYPEEDGE=0x%04X, INTPOL=0x%04X",
 		inten, itype, ipol);
-	
 
 	/* Debug: Show final interrupt configuration */
 	const char *trig_str = (trig == GPIO_INT_TRIG_LOW)    ? "LOW/FALLING"
@@ -550,8 +564,7 @@ static const struct gpio_driver_api gpio_em32_driver_api = {
  * @param func Alternate function number (0=GPIO, 1-7=AF1-AF7)
  * @return 0 on success, negative errno on failure
  */
-int gpio_em32_configure(const struct device *dev, gpio_pin_t pin,
-			uint32_t conf, uint32_t func)
+int gpio_em32_configure(const struct device *dev, gpio_pin_t pin, uint32_t conf, uint32_t func)
 {
 	const struct gpio_em32_config *config = dev->config;
 	const struct device *clk_dev = config->clock_dev;
@@ -563,8 +576,8 @@ int gpio_em32_configure(const struct device *dev, gpio_pin_t pin,
 		return -EINVAL;
 	}
 
-	LOG_DBG("gpio_em32_configure: port=%d pin=%d func=%d conf=0x%08X",
-		config->port, pin, func, conf);
+	LOG_DBG("gpio_em32_configure: port=%d pin=%d func=%d conf=0x%08X", config->port, pin, func,
+		conf);
 
 	/* Ensure clock is enabled for this GPIO port via Zephyr clock_control */
 	clk_ret = clock_control_on(clk_dev, UINT_TO_POINTER(config->clock_gate_id));
@@ -604,8 +617,8 @@ int gpio_em32_configure(const struct device *dev, gpio_pin_t pin,
 		return ret;
 	}
 
-	LOG_DBG("P%c%d configured: func=%d, pupd=%d, od=%d, hd=%d",
-		'A' + config->port, pin, func, pupd, open_drain, high_drive);
+	LOG_DBG("P%c%d configured: func=%d, pupd=%d, od=%d, hd=%d", 'A' + config->port, pin, func,
+		pupd, open_drain, high_drive);
 
 	return 0;
 }
@@ -625,8 +638,8 @@ static int gpio_em32_init(const struct device *dev)
 	/* Enable GPIO clock first */
 	clk_ret = clock_control_on(clk_dev, UINT_TO_POINTER(config->clock_gate_id));
 	if (clk_ret < 0) {
-			LOG_ERR("Turn on AHB clock fail %d.", clk_ret);
-			return clk_ret;
+		LOG_ERR("Turn on AHB clock fail %d.", clk_ret);
+		return clk_ret;
 	}
 
 	/* Initialize data structure */
@@ -669,10 +682,10 @@ static int gpio_em32_init(const struct device *dev)
 			{                                                                          \
 				.port_pin_mask = GPIO_PORT_PIN_MASK_FROM_DT_INST(n),               \
 			},                                                                         \
-		.base = DT_INST_REG_ADDR(n),                                        \
-		.sysctrl_base = DT_REG_ADDR(DT_NODELABEL(sysctrl)),\
-		.clock_dev = DEVICE_DT_GET(DT_INST_CLOCKS_CTLR(n)),\
-		.clock_gate_id = DT_INST_CLOCKS_CELL_BY_IDX(n, 0, gate_id),\
+		.base = DT_INST_REG_ADDR(n),                                                       \
+		.sysctrl_base = DT_REG_ADDR(DT_NODELABEL(sysctrl)),                                \
+		.clock_dev = DEVICE_DT_GET(DT_INST_CLOCKS_CTLR(n)),                                \
+		.clock_gate_id = DT_INST_CLOCKS_CELL_BY_IDX(n, 0, gate_id),                        \
 		.port = DT_INST_PROP(n, port_id),                                                  \
 		.pclken =                                                                          \
 			{                                                                          \

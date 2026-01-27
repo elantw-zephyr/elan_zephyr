@@ -33,9 +33,9 @@ extern "C" {
 #define EM32_PINCFG_DRIVE_SHIFT   13
 
 /* Pull-up/Pull-down values */
-#define EM32_PINCFG_NO_PULL    0x0
-#define EM32_PINCFG_PULL_UP    0x1
-#define EM32_PINCFG_PULL_DOWN  0x2
+#define EM32_PINCFG_NO_PULL   0x0
+#define EM32_PINCFG_PULL_UP   0x1
+#define EM32_PINCFG_PULL_DOWN 0x2
 
 /* Output type values */
 #define EM32_PINCFG_PUSH_PULL  0x0
@@ -55,12 +55,10 @@ extern "C" {
  *
  * @return 0 on success, negative errno on failure
  */
-int gpio_em32_configure(const struct device *dev, gpio_pin_t pin,
-			uint32_t conf, uint32_t func);
+int gpio_em32_configure(const struct device *dev, gpio_pin_t pin, uint32_t conf, uint32_t func);
 
 #ifdef __cplusplus
 }
 #endif
 
 #endif /* ZEPHYR_DRIVERS_GPIO_GPIO_EM32_H_ */
-
