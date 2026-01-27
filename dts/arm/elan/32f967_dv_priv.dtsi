@@ -51,10 +51,10 @@
 		};
 	};
 	soc {
-		/* MIRC control */
-		mircctrl: syscon@0x100a0000 {
+		/* Information control (trim codes, device id/version, etc.) */
+		infoctrl: syscon@100a6000 {
 			compatible = "syscon";
-			reg = <0x100a0000 0x1000>;
+			reg = <0x100a6000 0x2000>;
 			reg-io-width = <4>;
 			status = "disabled";
 		};

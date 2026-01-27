@@ -19,13 +19,13 @@ LOG_MODULE_REGISTER(em32_ahb, CONFIG_LOG_DEFAULT_LEVEL);
 #include <zephyr/sys/util.h>
 
 #include "soc_clkctrl.h"
-#include "soc_miscctrl.h"
+#include "soc_infoctrl.h"
 #include "soc_sysctrl.h"
 
 struct elan_em32_ahb_clock_control_config {
 	mm_reg_t sysctrl_base;
 	mm_reg_t clkctrl_base;
-	mm_reg_t mircctrl_base;
+	mm_reg_t infoctrl_base;
 	uint32_t clock_source;
 	uint32_t clock_frequency;
 	uint32_t clock_divider;
@@ -293,7 +293,7 @@ void elan_em32_set_ahb_freq(const struct device *dev)
 	const struct elan_em32_ahb_clock_control_config *config = dev->config;
 	mm_reg_t sysctrl_base = config->sysctrl_base;
 	mm_reg_t clkctrl_base = config->clkctrl_base;
-	mm_reg_t mircctrl_base = config->mircctrl_base;
+	mm_reg_t infoctrl_base = config->infoctrl_base;
 	uint32_t clk_src = config->clock_source;
 	uint32_t freq_src = config->clock_frequency;
 	uint32_t pre_div = config->clock_divider;
@@ -339,9 +339,9 @@ void elan_em32_set_ahb_freq(const struct device *dev)
 
 		switch (freq_src) {
 		case EM32_CLK_FREQ_IRCLOW12:
-			mirc_tall = ahb_em32_read_field(mircctrl_base,
+			mirc_tall = ahb_em32_read_field(infoctrl_base,
 							MIRC_12M_R_2_OFF, MIRC_TALL_MASK);
-			mirc_tv12 = ahb_em32_read_field(mircctrl_base,
+			mirc_tv12 = ahb_em32_read_field(infoctrl_base,
 							MIRC_12M_R_2_OFF, MIRC_TV12_MASK);
 			ahb_em32_write_field(clkctrl_base, CLKCTRL_MIRC_CTRL2_OFF,
 						CLKCTRL_MIRC2_TALL_MASK, (mirc_tall & 0x3FF));
@@ -351,9 +351,9 @@ void elan_em32_set_ahb_freq(const struct device *dev)
 
 		case EM32_CLK_FREQ_IRCLOW16:
 		case EM32_CLK_FREQ_IRCHIGH64:
-			mirc_tall = ahb_em32_read_field(mircctrl_base,
+			mirc_tall = ahb_em32_read_field(infoctrl_base,
 							MIRC_16M_2_OFF, MIRC_TALL_MASK);
-			mirc_tv12 = ahb_em32_read_field(mircctrl_base,
+			mirc_tv12 = ahb_em32_read_field(infoctrl_base,
 							MIRC_16M_2_OFF, MIRC_TV12_MASK);
 			ahb_em32_write_field(clkctrl_base, CLKCTRL_MIRC_CTRL2_OFF,
 						CLKCTRL_MIRC2_TALL_MASK, (mirc_tall & 0x3FF));
@@ -363,9 +363,9 @@ void elan_em32_set_ahb_freq(const struct device *dev)
 
 		case EM32_CLK_FREQ_IRCLOW20:
 		case EM32_CLK_FREQ_IRCHIGH80:
-			mirc_tall = ahb_em32_read_field(mircctrl_base,
+			mirc_tall = ahb_em32_read_field(infoctrl_base,
 							MIRC_20M_2_OFF, MIRC_TALL_MASK);
-			mirc_tv12 = ahb_em32_read_field(mircctrl_base,
+			mirc_tv12 = ahb_em32_read_field(infoctrl_base,
 							MIRC_20M_2_OFF, MIRC_TV12_MASK);
 			ahb_em32_write_field(clkctrl_base, CLKCTRL_MIRC_CTRL2_OFF,
 						CLKCTRL_MIRC2_TALL_MASK, (mirc_tall & 0x3FF));
@@ -375,9 +375,9 @@ void elan_em32_set_ahb_freq(const struct device *dev)
 
 		case EM32_CLK_FREQ_IRCLOW24:
 		case EM32_CLK_FREQ_IRCHIGH96:
-			mirc_tall = ahb_em32_read_field(mircctrl_base,
+			mirc_tall = ahb_em32_read_field(infoctrl_base,
 							MIRC_24M_2_OFF, MIRC_TALL_MASK);
-			mirc_tv12 = ahb_em32_read_field(mircctrl_base,
+			mirc_tv12 = ahb_em32_read_field(infoctrl_base,
 							MIRC_24M_2_OFF, MIRC_TV12_MASK);
 			ahb_em32_write_field(clkctrl_base, CLKCTRL_MIRC_CTRL2_OFF,
 						CLKCTRL_MIRC2_TALL_MASK, (mirc_tall & 0x3FF));
@@ -387,9 +387,9 @@ void elan_em32_set_ahb_freq(const struct device *dev)
 
 		case EM32_CLK_FREQ_IRCLOW28:
 		case EM32_CLK_FREQ_IRCHIGH112:
-			mirc_tall = ahb_em32_read_field(mircctrl_base,
+			mirc_tall = ahb_em32_read_field(infoctrl_base,
 							MIRC_28M_2_OFF, MIRC_TALL_MASK);
-			mirc_tv12 = ahb_em32_read_field(mircctrl_base,
+			mirc_tv12 = ahb_em32_read_field(infoctrl_base,
 							MIRC_28M_2_OFF, MIRC_TV12_MASK);
 			ahb_em32_write_field(clkctrl_base, CLKCTRL_MIRC_CTRL2_OFF,
 						CLKCTRL_MIRC2_TALL_MASK, (mirc_tall & 0x3FF));
@@ -399,9 +399,9 @@ void elan_em32_set_ahb_freq(const struct device *dev)
 
 		case EM32_CLK_FREQ_IRCLOW32:
 		case EM32_CLK_FREQ_IRCHIGH128:
-			mirc_tall = ahb_em32_read_field(mircctrl_base,
+			mirc_tall = ahb_em32_read_field(infoctrl_base,
 							MIRC_32M_2_OFF, MIRC_TALL_MASK);
-			mirc_tv12 = ahb_em32_read_field(mircctrl_base,
+			mirc_tv12 = ahb_em32_read_field(infoctrl_base,
 							MIRC_32M_2_OFF, MIRC_TV12_MASK);
 			ahb_em32_write_field(clkctrl_base, CLKCTRL_MIRC_CTRL2_OFF,
 						CLKCTRL_MIRC2_TALL_MASK, (mirc_tall & 0x3FF));
@@ -629,7 +629,7 @@ static int elan_em32_ahb_clock_control_init(const struct device *dev)
 static const struct elan_em32_ahb_clock_control_config em32_ahb_config_##inst = {\
 	.sysctrl_base    = DT_REG_ADDR(DT_NODELABEL(sysctrl)),                     \
 	.clkctrl_base    = DT_REG_ADDR(DT_NODELABEL(clkctrl)),                     \
-	.mircctrl_base   = DT_REG_ADDR(DT_NODELABEL(mircctrl)),                     \
+	.infoctrl_base   = DT_REG_ADDR(DT_NODELABEL(infoctrl)),                     \
 	.clock_source    = DT_INST_PROP(inst, clock_source),                        \
 	.clock_frequency = DT_INST_PROP(inst, clock_frequency),                     \
 	.clock_divider   = DT_INST_PROP(inst, clock_divider),                       \

@@ -4,22 +4,22 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#ifndef ZEPHYR_SOC_ELAN_EM32F967_SOC_MISCCTRL_H_
-#define ZEPHYR_SOC_ELAN_EM32F967_SOC_MISCCTRL_H_
+#ifndef ZEPHYR_SOC_ELAN_EM32F967_SOC_INFOCTRL_H_
+#define ZEPHYR_SOC_ELAN_EM32F967_SOC_INFOCTRL_H_
 
 #include <zephyr/devicetree.h>
 #include <zephyr/sys/util.h>
 
 /* Devicetree node label */
-#define MISCCTRL_DT_NODE DT_NODELABEL(miscctrl)
+#define INFOCTRL_DT_NODE DT_NODELABEL(infoctrl)
 
 /* Register Offsets */
-#define MIRC_12M_R_2_OFF 0x7f60
-#define MIRC_16M_2_OFF   0x6070
-#define MIRC_20M_2_OFF   0x6074
-#define MIRC_24M_2_OFF   0x6078
-#define MIRC_28M_2_OFF   0x607c
-#define MIRC_32M_2_OFF   0x6080
+#define MIRC_12M_R_2_OFF 0x1f60
+#define MIRC_16M_2_OFF   0x0070
+#define MIRC_20M_2_OFF   0x0074
+#define MIRC_24M_2_OFF   0x0078
+#define MIRC_28M_2_OFF   0x007c
+#define MIRC_32M_2_OFF   0x0080
 
 #define CLKCTRL_CLK_GATE_REG_OFF  0x0100 /* TODO: move to sysctrl.h when upstream */
 #define CLKCTRL_CLK_GATE_REG2_OFF 0x0104 /* TODO: move to sysctrl.h when upstream */
@@ -28,4 +28,4 @@
 #define MIRC_TALL_MASK GENMASK(9, 0)     /* [9:0]    MIRC_Tall */
 #define MIRC_TV12_MASK GENMASK(12, 10)   /* [12:10]  MIRC_TV12 */
 
-#endif /* ZEPHYR_SOC_ELAN_EM32F967_SOC_MISCCTRL_H_ */
+#endif /* ZEPHYR_SOC_ELAN_EM32F967_SOC_INFOCTRL_H_ */
