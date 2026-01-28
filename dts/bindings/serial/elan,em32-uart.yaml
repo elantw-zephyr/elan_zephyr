@@ -1,7 +1,7 @@
 # Copyright (c) 2026 Elan Microelectronics Corp..
 # SPDX-License-Identifier: Apache-2.0
 
-description: ELAN 967 UART
+description: ELAN EM32 UART controller
 
 compatible: "elan,em32-uart"
 
@@ -12,14 +12,19 @@ include:
   - name: uart-controller-pin-inversion.yaml
 
 properties:
-  clocks:
-    type: phandle-array
-    description: Input clock source for UART peripheral.
-    required: true
   reg:
     required: true
+
+  clocks:
+    type: phandle-array
+    required: true
+    description: |
+      Input clock for the UART. The clock specifier includes one cell:
+      - gate_id: Clock gate identifier for the peripheral.
+
   current-speed:
     required: true
+    description: Default baud rate in bps.
 
   pinctrl-0:
     required: true
