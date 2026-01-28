@@ -21,8 +21,8 @@
 LOG_MODULE_REGISTER(uart_em32, CONFIG_UART_LOG_LEVEL);
 
 struct uart_em32_config {
-	uintptr_t base;                 // base address from DTS `reg`
-	const struct device *clock_dev; // clock device reference from DTS "clocks" property
+	uintptr_t base;                 /* base address from DTS `reg` */
+	const struct device *clock_dev; /* clock device reference from DTS "clocks" property */
 	uint32_t clock_gate_id;
 	const struct pinctrl_dev_config *pcfg;
 };
@@ -34,12 +34,14 @@ struct uart_em32_data {
 static inline uint32_t uart_em32_read(const struct device *dev, uint32_t offset)
 {
 	const struct uart_em32_config *config = dev->config;
+
 	return sys_read32(config->base + offset);
 }
 
 static inline void uart_em32_write(const struct device *dev, uint32_t offset, uint32_t value)
 {
 	const struct uart_em32_config *config = dev->config;
+
 	sys_write32(value, config->base + offset);
 }
 
@@ -103,16 +105,16 @@ static int uart_em32_init(const struct device *dev)
 
 	/* Enable clock to specified peripheral */
 
-    if (!device_is_ready(cfg->clock_dev)) {
-        return -ENODEV;
-    }
+	if (!device_is_ready(cfg->clock_dev)) {
+		return -ENODEV;
+	}
 
-    ret = clock_control_on(cfg->clock_dev, UINT_TO_POINTER(cfg->clock_gate_id));
-    if (ret) {
-        return ret;
-    }
+	ret = clock_control_on(cfg->clock_dev, UINT_TO_POINTER(cfg->clock_gate_id));
+	if (ret) {
+		return ret;
+	}
 
-	// Get APB Clock Rate
+	/* Get APB Clock Rate */
 	ret = clock_control_get_rate(cfg->clock_dev, NULL, &apb_clk_rate);
 	if (ret < 0) {
 		return ret;
