@@ -710,6 +710,6 @@ static int gpio_em32_init(const struct device *dev)
 	static struct gpio_em32_data gpio_em32_data_##n;                                           \
                                                                                                    \
 	DEVICE_DT_INST_DEFINE(n, gpio_em32_init, NULL, &gpio_em32_data_##n, &gpio_em32_config_##n, \
-			      POST_KERNEL, CONFIG_GPIO_INIT_PRIORITY, &gpio_em32_driver_api);
+			      PRE_KERNEL_1, CONFIG_GPIO_INIT_PRIORITY, &gpio_em32_driver_api);
 
 DT_INST_FOREACH_STATUS_OKAY(GPIO_EM32_INIT)

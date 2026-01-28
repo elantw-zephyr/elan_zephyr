@@ -317,4 +317,4 @@ static int em32_pinctrl_driver_init(void)
 }
 
 /* Initialize pinctrl driver during system startup */
-SYS_INIT(em32_pinctrl_driver_init, POST_KERNEL, CONFIG_KERNEL_INIT_PRIORITY_DEFAULT);
+SYS_INIT(em32_pinctrl_driver_init, PRE_KERNEL_1, 45);
