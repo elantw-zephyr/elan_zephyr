@@ -1,3 +1,8 @@
+/*
+ * Copyright (c) 2026 ELAN Microelectronics Corp.
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 #define DT_DRV_COMPAT elan_em32_uart
 
 #include <zephyr/kernel.h>
