@@ -17,7 +17,7 @@
 #include <zephyr/drivers/pinctrl.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/devicetree.h>
-#include "../../../include/zephyr/dt-bindings/pinctrl/em32f967-pinctrl.h"
+#include <zephyr/dt-bindings/pinctrl/em32f967-pinctrl.h>
 #include <soc.h>
 
 /* Include GPIO driver header for EM32-style integration */
