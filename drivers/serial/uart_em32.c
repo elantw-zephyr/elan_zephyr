@@ -12,11 +12,11 @@
 #define UART_STATE_RX_BUF_OVERRUN_MASK BIT(3)
 
 /* EM32 UART register offsets - corrected per spec */
-#define UART_DATA_OFFSET           0x00
-#define UART_STATE_OFFSET          0x04
-#define UART_CTRL_OFFSET           0x08
-#define UART_INTSTACLR_OFFSET      0x0C
-#define UART_BAUDDIV_OFFSET        0x10
+#define UART_DATA_OFFSET      0x00
+#define UART_STATE_OFFSET     0x04
+#define UART_CTRL_OFFSET      0x08
+#define UART_INTSTACLR_OFFSET 0x0C
+#define UART_BAUDDIV_OFFSET   0x10
 
 LOG_MODULE_REGISTER(uart_em32, CONFIG_UART_LOG_LEVEL);
 
@@ -133,21 +133,21 @@ static int uart_em32_init(const struct device *dev)
 	return 0;
 }
 
-#define UART_EM32_INIT(index)                                                                   \
+#define UART_EM32_INIT(index)                                                                      \
 	PINCTRL_DT_INST_DEFINE(index);                                                             \
-	static struct uart_em32_data uart_em32_data_##index = {                              \
+	static struct uart_em32_data uart_em32_data_##index = {                                    \
 		.baudrate = DT_INST_PROP(index, current_speed),                                    \
 	};                                                                                         \
                                                                                                    \
-	static const struct uart_em32_config uart_em32_config_##index = {                    \
+	static const struct uart_em32_config uart_em32_config_##index = {                          \
 		.base = DT_INST_REG_ADDR(index),                                                   \
-		.clock_dev = DEVICE_DT_GET(DT_INST_CLOCKS_CTLR(index)),                        \
-		.clock_gate_id = DT_INST_CLOCKS_CELL_BY_IDX(index, 0, gate_id),                        \
+		.clock_dev = DEVICE_DT_GET(DT_INST_CLOCKS_CTLR(index)),                            \
+		.clock_gate_id = DT_INST_CLOCKS_CELL_BY_IDX(index, 0, gate_id),                    \
 		.pcfg = PINCTRL_DT_INST_DEV_CONFIG_GET(index),                                     \
 	};                                                                                         \
                                                                                                    \
-	DEVICE_DT_INST_DEFINE(index, uart_em32_init, NULL, /* PM control */                     \
-			      &uart_em32_data_##index, &uart_em32_config_##index,            \
-			      PRE_KERNEL_1, CONFIG_SERIAL_INIT_PRIORITY, &uart_em32_api);
+	DEVICE_DT_INST_DEFINE(index, uart_em32_init, NULL, /* PM control */                        \
+			      &uart_em32_data_##index, &uart_em32_config_##index, PRE_KERNEL_1,    \
+			      CONFIG_SERIAL_INIT_PRIORITY, &uart_em32_api);
 
 DT_INST_FOREACH_STATUS_OKAY(UART_EM32_INIT)
