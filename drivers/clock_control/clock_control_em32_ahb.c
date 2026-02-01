@@ -602,7 +602,7 @@ BUILD_ASSERT(CONFIG_EM32_DELAY_SWITCH_PRIORITY > CONFIG_SYSTEM_CLOCK_INIT_PRIORI
 	     "delay switch priority must be greater than system clock priority");
 
 /*
- * Switch the delay backend at POST_KERNEL so that k_busy_wait() and other
+ * Switch the delay backend at PRE_KERNEL_2 so that k_busy_wait() and other
  * kernel primitives are available and calibrated.
  */
 SYS_INIT(delay_switch_to_late_post_init, PRE_KERNEL_2, CONFIG_EM32_DELAY_SWITCH_PRIORITY);
