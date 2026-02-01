@@ -5,6 +5,7 @@
 config CLOCK_CONTROL_EM32_AHB
 	bool "Elan EM32 AHB clock control"
 	default y
+	depends on SOC_EM32F967
 	depends on DT_HAS_ELAN_EM32_AHB_ENABLED
 	help
 	  This option enables the clock controller ahb driver for EM32FXXX.
@@ -12,6 +13,7 @@ config CLOCK_CONTROL_EM32_AHB
 config CLOCK_CONTROL_EM32_APB
 	bool "Elan EM32 APB clock control"
 	default y
+	depends on SOC_EM32F967
 	depends on DT_HAS_ELAN_EM32_APB_ENABLED
 	help
 	  This option enables the clock controller apb driver for EM32FXXX.

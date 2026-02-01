@@ -6,6 +6,7 @@
 config GPIO_EM32
 	bool "ELAN EMC32Fxxx GPIO driver"
 	default y
+	depends on SOC_EM32F967
 	depends on DT_HAS_ELAN_EM32_GPIO_ENABLED
 	help
 	  Enable GPIO driver for ELAN EM32F967 microcontroller.

@@ -6,6 +6,7 @@
 config PINCTRL_EM32
 	bool "EM32F967 pin control driver"
 	default y
+	depends on SOC_EM32F967
 	depends on DT_HAS_ELAN_EM32_PINCTRL_ENABLED
 	help
 	  Enable pin control driver for EM32F967 SoC.
