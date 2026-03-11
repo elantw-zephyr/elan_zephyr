@@ -988,19 +988,19 @@ static void e967_usb_resume_isr(const struct device *dev)
 {
 	struct udc_e967_data *priv = udc_get_private(dev);
 	if (priv->reg_udc_int_sta->UDCINT_STA.UDC_INT_STABIT.RESUMEINTSF == 1) {
-		priv->reg_udc_int_sta->UDCINT_STA.UDC_INT_STABIT.RESUMEINTSFCLR = 1;
-	}
 	
 #if (__GLOBAL_DEBUG_LOG__ > 0)		
-	printk("[INFO] >>> usb [resume] signal\n");
+		printk("[INFO] >>> usb [resume] signal\n");
 #endif		
 	
-	udc_set_suspended(dev, false);
-	udc_submit_event(dev, UDC_EVT_RESUME, 0);
+		udc_set_suspended(dev, false);
+		udc_submit_event(dev, UDC_EVT_RESUME, 0);
 
 #if (_IS_SET_CLEAR_FEATURE_PATCH)
-	_handle_set_feature_remote_wakeup( dev, 0);
+		_handle_set_feature_remote_wakeup( dev, 0);
 #endif
+		priv->reg_udc_int_sta->UDCINT_STA.UDC_INT_STABIT.RESUMEINTSFCLR = 1;
+	}
 
 	return;
 }
