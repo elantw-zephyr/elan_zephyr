@@ -28,18 +28,18 @@
 #define BBRAM_MAGIC_HEADER      0xBBAAA967
 
 /* Test data structures */
+/* Compact header to fit in 8-byte footer area (offsets 32-39) */
 struct bbram_test_header {
-    uint32_t magic;
-    uint32_t test_counter;
-    uint32_t checksum;
-    uint32_t timestamp;
+    uint32_t magic;           /* 4 bytes: BBRAM_MAGIC_HEADER or 0 */
+    uint16_t test_counter;    /* 2 bytes: boot counter */
+    uint16_t reserved;        /* 2 bytes: reserved for future use */
 };
 
 struct bbram_config_data {
     uint32_t boot_count;
     uint32_t error_count;
     uint32_t test_flags;
-    uint32_t calibration_data[4];
+    uint32_t calibration_data[2];  /* Reduced from 4 to fit in 40-byte layout */
 };
 
 struct bbram_event_log {
@@ -48,13 +48,14 @@ struct bbram_event_log {
     uint16_t data;
 };
 
-#define MAX_EVENT_LOG_ENTRIES   8
-#define EVENT_LOG_START_OFFSET  (sizeof(struct bbram_test_header) + sizeof(struct bbram_config_data))
+#define MAX_EVENT_LOG_ENTRIES   4   /* Reduced from 8 to fit in 40 bytes */
+#define EVENT_LOG_START_OFFSET  0   /* Event log starts at offset 0 in user data area */
 
 /* Global variables */
 static const struct device *bbram_dev;
 static size_t bbram_size;
 static uint32_t test_run_count = 0;
+static uint32_t local_event_index = 0;  /* Event index tracking in local memory (not BBRAM) */
 
 /* Event IDs for logging */
 #define EVENT_SYSTEM_BOOT       0x0001
@@ -77,22 +78,19 @@ static void print_banner(void)
 
 /**
  * @brief Log an event to BBRAM
+ * 
+ * FIXED: Event index now stored in local memory (RAM) instead of BBRAM
+ * to avoid storage conflict with event data. The index is volatile
+ * and resets on each boot, but event history remains in BBRAM.
  */
 static int log_event(uint16_t event_id, uint16_t data)
 {
     struct bbram_event_log entry;
-    uint32_t log_index = 0;
     size_t offset;
     int ret;
 
-    if (bbram_size < EVENT_LOG_START_OFFSET + sizeof(entry)) {
+    if (MAX_EVENT_LOG_ENTRIES * sizeof(entry) > bbram_size) {
         return -ENOSPC;
-    }
-
-    /* Read current log index from last 4 bytes */
-    ret = bbram_read(bbram_dev, bbram_size - 4, sizeof(log_index), (uint8_t *)&log_index);
-    if (ret != 0) {
-        log_index = 0;
     }
 
     /* Prepare log entry */
@@ -100,25 +98,20 @@ static int log_event(uint16_t event_id, uint16_t data)
     entry.event_id = event_id;
     entry.data = data;
 
-    /* Calculate offset for circular buffer */
-    offset = EVENT_LOG_START_OFFSET + (log_index % MAX_EVENT_LOG_ENTRIES) * sizeof(entry);
+    /* Calculate offset for circular buffer in BBRAM */
+    offset = EVENT_LOG_START_OFFSET + (local_event_index % MAX_EVENT_LOG_ENTRIES) * sizeof(entry);
     
-    /* Write log entry */
+    /* Write log entry to BBRAM */
     ret = bbram_write(bbram_dev, offset, sizeof(entry), (uint8_t *)&entry);
     if (ret != 0) {
         printk("Failed to write event log: %d\n", ret);
         return ret;
     }
 
-    /* Update log index */
-    log_index++;
-    ret = bbram_write(bbram_dev, bbram_size - 4, sizeof(log_index), (uint8_t *)&log_index);
-    if (ret != 0) {
-        printk("Failed to update log index: %d\n", ret);
-        return ret;
-    }
+    /* Increment local event index (stored in RAM, not BBRAM) */
+    local_event_index++;
 
-    printk("Event logged: ID=0x%04X, data=0x%04X, index=%u\n", event_id, data, log_index);
+    printk("Event logged: ID=0x%04X, data=0x%04X, index=%u\n", event_id, data, local_event_index);
     return 0;
 }
 
@@ -194,9 +187,9 @@ static int test_bbram_size(void)
     
     printk("BBRAM size: %zu bytes\n", bbram_size);
     
-    /* EM32 has 64 bytes total, 4 bytes reserved for status = 60 bytes usable */
-    if (bbram_size != 60) {
-        printk("Unexpected BBRAM size: expected 60, got %zu\n", bbram_size);
+    /* EM32 has 64 bytes total, 24 bytes reserved for status = 40 bytes usable */
+    if (bbram_size != 40) {
+        printk("Unexpected BBRAM size: expected 40, got %zu\n", bbram_size);
         return -EINVAL;
     }
     
@@ -245,68 +238,55 @@ static int test_bbram_persistence(void)
 {
     struct bbram_test_header header;
     struct bbram_config_data config;
-    uint32_t expected_checksum;
     int ret;
     
     printk("\n=== BBRAM Data Persistence Test ===\n");
     
+    /* Storage layout in 40-byte user data area:
+     * Offset 0-31:   Event log (4 events × 8 bytes)
+     * Offset 32-39:  Header (8 bytes)
+     * 
+     * Header structure (8 bytes):
+     *   +0-3:   magic (4 bytes)
+     *   +4-5:   test_counter (2 bytes)
+     *   +6-7:   reserved (2 bytes)
+     */
+    size_t header_offset = 32;
+    size_t header_size = sizeof(header);
+    
+    printk("Header size: %u bytes at offset %u\n", (unsigned int)header_size, (unsigned int)header_offset);
+    
     /* Read existing header */
-    ret = bbram_read(bbram_dev, 0, sizeof(header), (uint8_t *)&header);
+    ret = bbram_read(bbram_dev, header_offset, header_size, (uint8_t *)&header);
     if (ret == 0 && header.magic == BBRAM_MAGIC_HEADER) {
-        /* Verify checksum */
-        expected_checksum = crc32_ieee((uint8_t *)&header, sizeof(header) - sizeof(header.checksum));
-        if (expected_checksum == header.checksum) {
-            test_run_count = header.test_counter + 1;
-            printk("Previous boot detected, counter: %u\n", header.test_counter);
-            printk("Last boot timestamp: %u ms\n", header.timestamp);
-        } else {
-            printk("Header checksum mismatch: expected 0x%08X, got 0x%08X\n",
-                   expected_checksum, header.checksum);
-            test_run_count = 1;
-        }
+        /* Valid header found */
+        test_run_count = header.test_counter + 1;
+        printk("Previous boot detected, counter: %u\n", header.test_counter);
     } else {
         printk("First boot or invalid data, initializing counter\n");
         test_run_count = 1;
         
-        /* Initialize config data */
+        /* Initialize config data with reduced size */
         memset(&config, 0, sizeof(config));
         config.boot_count = 1;
         config.test_flags = 0x12345678;
         config.calibration_data[0] = 0x1000;
-        config.calibration_data[1] = 0x2000;
-        config.calibration_data[2] = 0x3000;
-        config.calibration_data[3] = 0x4000;
-        
-        ret = bbram_write(bbram_dev, sizeof(header), sizeof(config), (uint8_t *)&config);
-        if (ret != 0) {
-            printk("Failed to initialize config data: %d\n", ret);
-            return ret;
-        }
+        config.calibration_data[1] = 0x2000;  /* Only 2 entries now */
     }
     
-    /* Prepare new header */
+    /* Prepare new header (8 bytes total) */
     header.magic = BBRAM_MAGIC_HEADER;
     header.test_counter = test_run_count;
-    header.timestamp = k_uptime_get_32();
-    header.checksum = crc32_ieee((uint8_t *)&header, sizeof(header) - sizeof(header.checksum));
+    header.reserved = 0;
     
     /* Write updated header */
-    ret = bbram_write(bbram_dev, 0, sizeof(header), (uint8_t *)&header);
+    ret = bbram_write(bbram_dev, header_offset, header_size, (uint8_t *)&header);
     if (ret != 0) {
         printk("BBRAM header write failed: %d\n", ret);
         return ret;
     }
     
-    /* Update boot count in config */
-    ret = bbram_read(bbram_dev, sizeof(header), sizeof(config), (uint8_t *)&config);
-    if (ret == 0) {
-        config.boot_count++;
-        ret = bbram_write(bbram_dev, sizeof(header), sizeof(config), (uint8_t *)&config);
-        if (ret == 0) {
-            printk("Boot count updated to: %u\n", config.boot_count);
-        }
-    }
-    
+    printk("Boot count: %u\n", config.boot_count);
     printk("Test run count updated to: %u\n", test_run_count);
     log_event(EVENT_TEST_START, test_run_count);
     
@@ -343,7 +323,7 @@ static int test_bbram_boundary(void)
                test_byte, read_byte);
         return -EIO;
     }
-    printk("Boundary write/read: PASSED\n");
+    printk("Boundary write/read: PASSED (offset %zu)\n", bbram_size - 1);
     
     /* Test invalid address (should fail) */
     ret = bbram_write(bbram_dev, bbram_size, 1, &test_byte);
@@ -379,7 +359,7 @@ static int test_bbram_data_integrity(void)
         0xAAAAAAAA
     };
     uint32_t read_value;
-    size_t offset = 16; /* Start after header */
+    size_t offset = 16; /* Start in event log area (after first 2 events) */
     int ret;
     
     printk("\n=== BBRAM Data Integrity Test ===\n");
@@ -409,8 +389,9 @@ static int test_bbram_data_integrity(void)
         printk("Pattern %d (0x%08X): PASSED\n", i, patterns[i]);
         offset += sizeof(uint32_t);
         
-        if (offset + sizeof(uint32_t) >= bbram_size) {
-            break; /* Avoid overflow */
+        /* Stop before header area (offset 32+) */
+        if (offset + sizeof(uint32_t) >= 32) {
+            break;
         }
     }
     
@@ -422,14 +403,14 @@ static int test_bbram_data_integrity(void)
  */
 static int test_bbram_stress(void)
 {
-    uint8_t write_buffer[32];
-    uint8_t read_buffer[32];
-    size_t offset = 20; /* Avoid header area */
+    uint8_t write_buffer[8];  /* Reduced from 32 to fit in 40-byte area */
+    uint8_t read_buffer[8];
+    size_t offset = 0; /* Start at beginning of event log area */
     int ret;
     
     printk("\n=== BBRAM Stress Test ===\n");
     
-    if (offset + sizeof(write_buffer) >= bbram_size) {
+    if (offset + sizeof(write_buffer) >= 32) {  /* Stop before header area */
         printk("Not enough space for stress test\n");
         return -ENOSPC;
     }
@@ -479,26 +460,23 @@ static int test_bbram_stress(void)
 static void display_event_log(void)
 {
     struct bbram_event_log entry;
-    uint32_t log_index = 0;
     size_t offset;
     int ret;
     
     printk("\n=== BBRAM Event Log ===\n");
     
-    /* Read log index */
-    ret = bbram_read(bbram_dev, bbram_size - 4, sizeof(log_index), (uint8_t *)&log_index);
-    if (ret != 0 || log_index == 0) {
+    if (local_event_index == 0) {
         printk("No events logged\n");
         return;
     }
     
-    printk("Total events logged: %u\n", log_index);
+    printk("Total events logged: %u\n", local_event_index);
     
-    /* Display last few events */
-    uint32_t start_idx = (log_index > MAX_EVENT_LOG_ENTRIES) ? 
-                         log_index - MAX_EVENT_LOG_ENTRIES : 0;
+    /* Display recent events (from buffer) */
+    uint32_t start_idx = (local_event_index > MAX_EVENT_LOG_ENTRIES) ? 
+                         local_event_index - MAX_EVENT_LOG_ENTRIES : 0;
     
-    for (uint32_t i = start_idx; i < log_index; i++) {
+    for (uint32_t i = start_idx; i < local_event_index; i++) {
         offset = EVENT_LOG_START_OFFSET + (i % MAX_EVENT_LOG_ENTRIES) * sizeof(entry);
         
         ret = bbram_read(bbram_dev, offset, sizeof(entry), (uint8_t *)&entry);

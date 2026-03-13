@@ -350,8 +350,8 @@ static int em32_bbram_get_size(const struct device *dev, size_t *size)
 {
     const struct em32_bbram_config *config = dev->config;
 
-    /* Reserve first 4 bytes for status, return usable size */
-    *size = config->size - 4;
+    /* Reserve first 24 bytes for status, return usable size */
+    *size = config->size - 24;
     return 0;
 }
 
@@ -362,7 +362,7 @@ static int em32_bbram_read(const struct device *dev, size_t offset,
                               size_t size, uint8_t *data)
 {
     const struct em32_bbram_config *config = dev->config;
-    size_t usable_size = config->size - 4; /* Reserve 4 bytes for status */
+    size_t usable_size = config->size - 24; /* Reserve 24 bytes for status */
     size_t i;
 
     if (!data) {
@@ -377,10 +377,10 @@ static int em32_bbram_read(const struct device *dev, size_t offset,
 
     LOG_DBG("BBRAM read: offset=%zu, size=%zu", offset, size);
 
-    /* Read data byte by byte, starting from offset 4 (after status) */
+    /* Read data byte by byte, starting from offset 24 (after status) */
     for (i = 0; i < size; i++) {
-        uint32_t reg_offset = ((offset + i + 4) / 4) * 4;
-        uint32_t byte_offset = (offset + i + 4) % 4;
+        uint32_t reg_offset = ((offset + i + 24) / 4) * 4;
+        uint32_t byte_offset = (offset + i + 24) % 4;
         uint32_t reg_value = bbram_read_reg(config->base_addr, reg_offset);
         
         data[i] = (reg_value >> (byte_offset * 8)) & 0xFF;
@@ -396,7 +396,7 @@ static int em32_bbram_write(const struct device *dev, size_t offset,
                                size_t size, const uint8_t *data)
 {
     const struct em32_bbram_config *config = dev->config;
-    size_t usable_size = config->size - 4; /* Reserve 4 bytes for status */
+    size_t usable_size = config->size - 24; /* Reserve 24 bytes for status */
     size_t i;
     int ret;
 
@@ -418,10 +418,10 @@ static int em32_bbram_write(const struct device *dev, size_t offset,
         return ret;
     }
 
-    /* Write data byte by byte, starting from offset 4 (after status) */
+    /* Write data byte by byte, starting from offset 24 (after status) */
     for (i = 0; i < size; i++) {
-        uint32_t reg_offset = ((offset + i + 4) / 4) * 4;
-        uint32_t byte_offset = (offset + i + 4) % 4;
+        uint32_t reg_offset = ((offset + i + 24) / 4) * 4;
+        uint32_t byte_offset = (offset + i + 24) % 4;
         uint32_t reg_value = bbram_read_reg(config->base_addr, reg_offset);
         
         /* Update the specific byte */
@@ -500,7 +500,7 @@ static int em32_bbram_init(const struct device *dev)
     DEVICE_DT_INST_DEFINE(n, em32_bbram_init, NULL,                      \
                           &em32_bbram_data_##n,                           \
                           &em32_bbram_config_##n,                         \
-                          POST_KERNEL, CONFIG_BBRAM_INIT_PRIORITY,            \
+                          PRE_KERNEL_1, CONFIG_BBRAM_INIT_PRIORITY,            \
                           &em32_bbram_api);
 
 DT_INST_FOREACH_STATUS_OKAY(EM32_BBRAM_INIT)
