@@ -292,7 +292,7 @@ void elan_em32_set_ahb_freq(const struct device *dev)
 	uint32_t clk_src = config->clock_source;
 	uint32_t freq_src = config->clock_frequency;
 	uint32_t pre_div = config->clock_divider;
-	bool bPLL = 0;
+	bool bPLL = false;
 
 	em32_clk_gate_open(sysctrl_base, EM32_GATE_PCLKG_AIP);
 
@@ -324,9 +324,9 @@ void elan_em32_set_ahb_freq(const struct device *dev)
 				     0x02);
 	} else {
 		if (freq_src >> 4) {
-			bPLL = 1;
+			bPLL = true;
 		} else {
-			bPLL = 0;
+			bPLL = false;
 		}
 
 		uint32_t mirc_tall, mirc_tv12;
