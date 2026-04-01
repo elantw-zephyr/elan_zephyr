@@ -498,9 +498,16 @@ static int gpio_em32_pin_interrupt_configure(const struct device *dev, gpio_pin_
 		inten, itype, ipol);
 
 	/* Debug: Show final interrupt configuration */
-	const char *trig_str = (trig == GPIO_INT_TRIG_LOW)    ? "LOW/FALLING"
-			       : (trig == GPIO_INT_TRIG_HIGH) ? "HIGH/RISING"
-							      : "BOTH";
+	const char *trig_str;
+
+	if (trig == GPIO_INT_TRIG_LOW) {
+		trig_str = "LOW/FALLING";
+	} else if (trig == GPIO_INT_TRIG_HIGH) {
+		trig_str = "HIGH/RISING";
+	} else {
+		trig_str = "BOTH";
+	}
+
 	const char *mode_str = (mode == GPIO_INT_MODE_EDGE) ? "EDGE" : "LEVEL";
 
 	LOG_DBG("Final interrupt config: %s %s trigger", mode_str, trig_str);
