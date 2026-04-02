@@ -454,7 +454,7 @@ static int spi_e967_init(const struct device *dev)
 	static const struct spi_elandev_config spi_elandev_config_##index = {                      \
 		.base = DT_INST_REG_ADDR(index),                                                   \
 		.clock_dev = DEVICE_DT_GET(DT_INST_CLOCKS_CTLR(index)),                        \
-		.clock_gate_id = DT_INST_CLOCKS_CELL_BY_IDX(index, 0, gate_id),                        \
+		.clock_gate_id = DT_INST_CLOCKS_CELL_BY_IDX(index, 0, clk_id),                        \
 		.pcfg = PINCTRL_DT_INST_DEV_CONFIG_GET(index),                                     \
 	};                                                                                         \
                                                                                                    \

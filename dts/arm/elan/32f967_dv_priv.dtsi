@@ -62,6 +62,7 @@
 };
 
 &spi2 {
+	compatible = "arm,pl022";
 	clocks = <&clk_apb_v2 EM32_GATE_PCLKG_SSP2>;
 	status = "okay";
 };

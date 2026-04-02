@@ -1,6 +1,6 @@
 config SPI_ELAN_ELANDEV
 	bool "Elan e967 SPI driver"
-	default y
+	default n
 
 if SPI_ELAN_ELANDEV
 config SPI_ELAN_ELANDEV_INTERRUPT

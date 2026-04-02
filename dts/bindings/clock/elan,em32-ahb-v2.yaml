@@ -32,7 +32,7 @@ properties:
     const: 1
 
 clock-cells:
-  - gate-id
+  - clk-id
 
 examples:
   - |

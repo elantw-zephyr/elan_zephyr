@@ -872,7 +872,7 @@ static int crypto_em32_init(const struct device *dev)
     static const struct crypto_em32_config crypto_em32_config_##n = {         \
         .base = DT_INST_REG_ADDR(n),                                         \
         .clock_dev = DEVICE_DT_GET_OR_NULL(DT_INST_CLOCKS_CTLR(n)),          \
-        .clock_gate_id = DT_INST_CLOCKS_CELL_BY_IDX(n, 0, gate_id),          \
+        .clock_gate_id = DT_INST_CLOCKS_CELL_BY_IDX(n, 0, clk_id),          \
         IF_ENABLED(CONFIG_CRYPTO_EM32_SHA_INTERRUPT,                          \
                   (.irq_config_func = crypto_em32_irq_config_##n,))           \
     };                                                                         \

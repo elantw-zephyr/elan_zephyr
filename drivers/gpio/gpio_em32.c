@@ -703,7 +703,7 @@ static int gpio_em32_init(const struct device *dev)
 		.base = DT_INST_REG_ADDR(n),                                                       \
 		.sysctrl_base = DT_REG_ADDR(DT_NODELABEL(sysctrl)),                                \
 		.clock_dev = DEVICE_DT_GET(DT_INST_CLOCKS_CTLR(n)),                                \
-		.clock_gate_id = DT_INST_CLOCKS_CELL_BY_IDX(n, 0, gate_id),                        \
+		.clock_gate_id = DT_INST_CLOCKS_CELL_BY_IDX(n, 0, clk_id),                        \
 		.port = DT_INST_PROP(n, port_id),                                                  \
 		.pclken =                                                                          \
 			{                                                                          \
