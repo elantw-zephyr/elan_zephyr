@@ -510,7 +510,7 @@ static void rtc_em32_isr(const struct device *dev)
     }
 }
 
-static const struct rtc_driver_api rtc_em32_api = {
+static DEVICE_API(rtc, rtc_em32_api) = {
     .set_time = rtc_em32_set_time,
     .get_time = rtc_em32_get_time,
 #if defined(CONFIG_RTC_ALARM)

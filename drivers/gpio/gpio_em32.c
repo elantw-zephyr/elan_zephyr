@@ -552,7 +552,7 @@ static void gpio_em32_isr(const struct device *dev)
 }
 
 /* GPIO driver API (EM32-style) */
-static const struct gpio_driver_api gpio_em32_driver_api = {
+static DEVICE_API(gpio, gpio_em32_driver_api) = {
 	.pin_configure = gpio_em32_pin_configure,
 	.port_get_raw = gpio_em32_port_get_raw,
 	.port_set_masked_raw = gpio_em32_port_set_masked_raw,

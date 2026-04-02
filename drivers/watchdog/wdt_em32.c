@@ -291,7 +291,7 @@ static void wdt_em32_isr(const struct device *dev)
     }
 }
 
-static const struct wdt_driver_api wdt_em32_api = {
+static DEVICE_API(wdt, wdt_em32_api) = {
     .setup = wdt_em32_setup,
     .disable = wdt_em32_disable,
     .install_timeout = wdt_em32_install_timeout,

@@ -438,7 +438,7 @@ static int em32_bbram_write(const struct device *dev, size_t offset,
 }
 
 /* BBRAM driver API */
-static const struct bbram_driver_api em32_bbram_api = {
+static DEVICE_API(bbram, em32_bbram_api) = {
     .check_invalid = em32_bbram_check_invalid,
     .check_standby_power = em32_bbram_check_standby_power,
     .check_power = em32_bbram_check_power,

@@ -386,12 +386,13 @@ static int spi_e967_release(const struct device *dev, const struct spi_config *c
 	return 0;
 }
 
-static const struct spi_driver_api spi_elan967_api = {.transceive = spi_e967_transceive,
+static DEVICE_API(spi, spi_elan967_api) = {
+	.transceive = spi_e967_transceive,
 #ifdef CONFIG_SPI_ASYNC
 						      .transceive_async = NULL,
 #endif /* CONFIG_SPI_ASYNC */
 #ifdef CONFIG_SPI_RTIO
-						      .submit iodev_submit = NULL,
+	.submit = NULL,
 #endif /* CONFIG_SPI_RTIO */
 						      .release = spi_e967_release};
 

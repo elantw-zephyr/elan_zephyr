@@ -84,7 +84,7 @@ static int uart_em32_uart_err_check(const struct device *dev)
 	return err;
 }
 
-static const struct uart_driver_api uart_em32_api = {
+static DEVICE_API(uart, uart_em32_api) = {
 	.poll_in = uart_em32_uart_poll_in,
 	.poll_out = uart_em32_uart_poll_out,
 	.err_check = uart_em32_uart_err_check,

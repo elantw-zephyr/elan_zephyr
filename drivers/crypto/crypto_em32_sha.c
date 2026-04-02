@@ -806,7 +806,7 @@ static void crypto_em32_isr(const struct device *dev)
 }
 #endif
 
-static const struct crypto_driver_api crypto_em32_api = {
+static DEVICE_API(crypto, crypto_em32_api) = {
     .query_hw_caps = crypto_em32_query_hw_caps,
     .hash_begin_session = crypto_em32_hash_begin_session,
     .hash_free_session = crypto_em32_hash_free_session,

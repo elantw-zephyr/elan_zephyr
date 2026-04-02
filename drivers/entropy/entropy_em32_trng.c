@@ -183,7 +183,7 @@ static int em32_trng_start_generation(const struct device *dev)
 
 
 
-static const struct entropy_driver_api em32_trng_api = {
+static DEVICE_API(entropy, em32_trng_api) = {
 	.get_entropy = em32_trng_get_entropy,
 };
 
