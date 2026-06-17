@@ -8,8 +8,8 @@
  * EM32F967 SoC specific helpers for pinctrl driver
  */
 
-#ifndef ZEPHYR_SOC_ARM_ST_EM32_COMMON_PINCTRL_SOC_H_
-#define ZEPHYR_SOC_ARM_ST_EM32_COMMON_PINCTRL_SOC_H_
+#ifndef ZEPHYR_SOC_ELAN_EM32F967_PINCTRL_SOC_H_
+#define ZEPHYR_SOC_ELAN_EM32F967_PINCTRL_SOC_H_
 
 #include <zephyr/devicetree.h>
 #include <zephyr/types.h>
@@ -27,7 +27,7 @@ extern "C" {
 typedef struct pinctrl_soc_pin {
 	/** Pinmux settings (port, pin and function). */
 	uint32_t pinmux;
-	/** Pin configuration (bias, drive and slew rate). */
+	/** Pin configuration (bias and drive). */
 	uint32_t pincfg;
 } pinctrl_soc_pin_t;
 
@@ -45,7 +45,7 @@ typedef struct pinctrl_soc_pin {
  */
 #define EM32_NO_PULL     0x0
 #define EM32_PULL_UP     0x1
-#define EM32_PULL_DOWN   0x2
+#define EM32_PULL_DOWN   0x3
 #define EM32_PUSH_PULL   0x0
 #define EM32_OPEN_DRAIN  0x1
 #define EM32_OUTPUT_LOW  0x0
@@ -87,7 +87,8 @@ typedef struct pinctrl_soc_pin {
 
 #define Z_PINCTRL_EM32_PINCFG_INIT(node_id)                                                        \
 	(((EM32_NO_PULL * DT_PROP(node_id, bias_disable)) << EM32_PUPDR_SHIFT) |                   \
-	 ((EM32_PULL_UP * DT_PROP(node_id, bias_pull_up)) << EM32_PUPDR_SHIFT) |                   \
+	 ((DT_PROP(node_id, bias_pull_up) * DT_PROP(node_id, bias_pull_up_value))                  \
+	  << EM32_PUPDR_SHIFT) |                                                                   \
 	 ((EM32_PULL_DOWN * DT_PROP(node_id, bias_pull_down)) << EM32_PUPDR_SHIFT) |               \
 	 ((EM32_PUSH_PULL * DT_PROP(node_id, drive_push_pull)) << EM32_OTYPER_SHIFT) |             \
 	 ((EM32_OPEN_DRAIN * DT_PROP(node_id, drive_open_drain)) << EM32_OTYPER_SHIFT) |           \
@@ -95,7 +96,6 @@ typedef struct pinctrl_soc_pin {
 	 ((EM32_OUTPUT_HIGH * DT_PROP(node_id, output_high)) << EM32_ODR_SHIFT) |                  \
 	 ((EM32_GPIO_OUTPUT * DT_PROP(node_id, output_low)) << EM32_MODER_SHIFT) |                 \
 	 ((EM32_GPIO_OUTPUT * DT_PROP(node_id, output_high)) << EM32_MODER_SHIFT) |                \
-	 (DT_ENUM_IDX(node_id, slew_rate) << EM32_OSPEEDR_SHIFT) |                                 \
 	 ((DT_PROP_OR(node_id, drive_strength, 0) > 0 ? 1 : 0) << EM32_DRIVE_SHIFT))
 
 /**
@@ -124,4 +124,4 @@ typedef struct pinctrl_soc_pin {
 }
 #endif
 
-#endif /* ZEPHYR_SOC_ARM_ST_EM32_COMMON_PINCTRL_SOC_H_ */
+#endif /* ZEPHYR_SOC_ELAN_EM32F967_PINCTRL_SOC_H_ */

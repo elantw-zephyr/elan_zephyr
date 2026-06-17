@@ -1,0 +1,17 @@
+#include <elan/32f967_dv_priv.dtsi>
+
+/ {
+    aliases {
+        led0 = &led0;
+    };
+
+    led0: led0 {
+        gpios = <&gpioa 14 GPIO_ACTIVE_HIGH>;
+        pinctrl-0 = <&gpio_pa14>;
+        pinctrl-names = "default";
+    };
+};
+
+&gpioa {
+    status = "okay";
+};

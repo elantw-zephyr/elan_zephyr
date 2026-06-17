@@ -41,9 +41,9 @@ static int elan_em32_apb_clock_control_get_rate(const struct device *dev,
 						clock_control_subsys_t sys, uint32_t *rate)
 {
 	const struct elan_em32_apb_clock_control_config *config = dev->config;
-	int ret = 0;
-	uint32_t ahb_clk_rate = 0;
-	uint32_t apb_clk_rate = 0;
+	int ret;
+	uint32_t ahb_clk_rate;
+	uint32_t apb_clk_rate;
 
 	ARG_UNUSED(sys);
 
@@ -57,7 +57,7 @@ static int elan_em32_apb_clock_control_get_rate(const struct device *dev,
 	apb_clk_rate = ahb_clk_rate / 2; /* Fix value of clock divider (2) */
 	*rate = apb_clk_rate;
 
-	return ret;
+	return 0;
 }
 
 static DEVICE_API(clock_control, elan_em32_apb_clock_control_api) = {
@@ -83,7 +83,7 @@ static int elan_em32_apb_clock_control_init(const struct device *dev)
 #define EM32_APB_INST_INIT(inst)                                                                   \
 	static const struct elan_em32_apb_clock_control_config em32_apb_config_##inst = {          \
 		.clock_device = DEVICE_DT_GET(DT_INST_CLOCKS_CTLR(inst)),                          \
-		.parent_gate_id = DT_INST_CLOCKS_CELL_BY_IDX(inst, 0, clk_id),                    \
+		.parent_gate_id = DT_INST_CLOCKS_CELL_BY_IDX(inst, 0, clk_id),                     \
 	};                                                                                         \
 	DEVICE_DT_INST_DEFINE(inst, elan_em32_apb_clock_control_init, NULL, NULL,                  \
 			      &em32_apb_config_##inst, PRE_KERNEL_1,                               \

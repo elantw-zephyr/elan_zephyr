@@ -94,10 +94,10 @@ static int uart_em32_init(const struct device *dev)
 {
 	const struct uart_em32_config *cfg = dev->config;
 	struct uart_em32_data *data = dev->data;
-	uint32_t apb_clk_rate = 0;
+	uint32_t apb_clk_rate;
 	uint32_t bauddiv;
 	uint32_t baudrate = data->baudrate;
-	int ret = 0;
+	int ret;
 
 	/* Apply pinctrl configuration first so IOShare and IOMUX are set
 	 * before configuring UART registers. Some hardware requires the
@@ -147,7 +147,7 @@ static int uart_em32_init(const struct device *dev)
 	static const struct uart_em32_config uart_em32_config_##index = {                          \
 		.base = DT_INST_REG_ADDR(index),                                                   \
 		.clock_dev = DEVICE_DT_GET(DT_INST_CLOCKS_CTLR(index)),                            \
-		.clock_gate_id = DT_INST_CLOCKS_CELL_BY_IDX(index, 0, clk_id),                    \
+		.clock_gate_id = DT_INST_CLOCKS_CELL_BY_IDX(index, 0, clk_id),                     \
 		.pcfg = PINCTRL_DT_INST_DEV_CONFIG_GET(index),                                     \
 	};                                                                                         \
                                                                                                    \

@@ -1,0 +1,32 @@
+#include <elan/32f967_dv_priv.dtsi>
+
+/*
+ * PA3 (PWMB_N) high-drive — the DTS method.
+ *
+ * Instead of poking IO_HD_PA_CTRL (0x4003021C) from application code, the
+ * PA3 high-drive bit is requested declaratively through the pin's
+ * `drive-strength` property.  At PWM init the driver calls
+ * pinctrl_apply_state(), and the em32 pinctrl driver
+ * (em32_pinctrl_set_drive()) sets bit 3 of IO_HD_PA_CTRL because
+ * pwmb_pa3_n carries `drive-strength = <1>`.
+ *
+ * pwmb_pa3_n already declares drive-strength = <1> in
+ * dts/arm/elan/em32f967-pinctrl.dtsi; it is re-affirmed here so the intent
+ * is visible in the sample itself.
+ */
+&pwmb_pa3_n {
+	pinmux = <EM32F967_PINMUX('A', 3, AF7)>;	/* PWMB/PWME Negative */
+	drive-strength = <1>;				/* 1 = high drive (PA3) */
+};
+
+/*
+ * PWM controller: PWMB N output routed to PA3 (Port A, PWM_S=0).
+ * pinctrl-0 references the high-drive pin node above.
+ */
+&pwm0 {
+	use-port-a;					/* PA0-PA5 (PWM_S=0) */
+	output-type = <1>;				/* N output only */
+	pinctrl-0 = <&pwmb_pa3_n>;
+	pinctrl-names = "default";
+	status = "okay";
+};

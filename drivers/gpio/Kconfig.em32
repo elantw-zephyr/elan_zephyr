@@ -17,3 +17,21 @@ config GPIO_EM32
 	  - Pull-up/pull-down resistors
 	  - Interrupt generation (edge/level triggered)
 	  - Alternate function selection
+
+config EM32_WKUP_PINS
+	bool "EM32F967 WakeUp controller pin support"
+	depends on GPIO_EM32
+	depends on PM
+	depends on POWEROFF
+	help
+	  Enable support for the EM32_GPIO_WKUP flag in gpio_pin_configure_dt().
+
+	  When set, the GPIO driver registers the pin with the EM32F967 WakeUp
+	  controller (WKUP1-WKUP7). The hardware wakeup path (AF5 IOMUX mux +
+	  WAKEUP_REG WAKEUPEN bit + WakeUp_Int_IRQn / IRQ 3) is activated at
+	  sys_poweroff() time by em32_pwr_wkup_pin_cfg_pupd(), called from the
+	  ELAN poweroff.c implementation.
+
+	  EM32F967 WakeUp pin mapping (hardware-fixed):
+	    WKUP1=PA6  WKUP2=PA14  WKUP3=PA15
+	    WKUP4=PB3  WKUP5=PB7   WKUP6=PB8   WKUP7=PB9

@@ -4,8 +4,6 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#define DT_DRV_COMPAT elan_em32_ahb
-
 #include <zephyr/device.h>
 #include <zephyr/devicetree.h>
 #include <zephyr/drivers/clock_control.h>
@@ -19,6 +17,8 @@ LOG_MODULE_REGISTER(em32_ahb, CONFIG_LOG_DEFAULT_LEVEL);
 #include <soc_clkctrl.h>
 #include <soc_infoctrl.h>
 #include <soc_sysctrl.h>
+
+#define DWT_UNLOCK_KEY 0xC5ACCE55U
 
 struct elan_em32_ahb_clock_control_config {
 	mm_reg_t sysctrl_base;
@@ -59,9 +59,8 @@ static inline void early_delay_us(uint32_t us)
 		 * Intended only to add a tiny gap between back-to-back register
 		 * writes when DWT is unavailable. This is not an accurate µs delay.
 		 */
-		for (volatile uint32_t i = 0; i < (ahb_count / 1000) * (us / 10u ? us / 10u : 1u);
-		     i++) {
-			__asm volatile("nop");
+		for (uint32_t i = 0; i < (ahb_count / 1000) * (us / 10u ? us / 10u : 1u); i++) {
+			arch_nop();
 		}
 	}
 }
@@ -72,7 +71,7 @@ static inline void early_delay_us(uint32_t us)
  * After the kernel time base is ready, k_busy_wait() provides a calibrated,
  * clock-aware busy wait and should be preferred to ad-hoc loops.
  */
-static inline void late_delay_us(uint32_t us)
+static void late_delay_us(uint32_t us)
 {
 	k_busy_wait(us);
 }
@@ -102,33 +101,9 @@ static inline void delay_us(uint32_t us)
 	delay_us_impl(us);
 }
 
-/**
- * @deprecated Use delay_us(1).
- */
-static inline void delay_1us(void)
-{
-	delay_us(1);
-}
-
-/**
- * @deprecated Use delay_us(10).
- */
-static inline void delay_10us(void)
-{
-	delay_us(10);
-}
-
-/**
- * @deprecated Use delay_us(100).
- */
-static inline void delay_100us(void)
-{
-	delay_us(100);
-}
-
 static inline uint32_t ahb_em32_read_field(uint32_t base, uint32_t offset, uint32_t mask)
 {
-	uint32_t reg = 0;
+	uint32_t reg;
 
 	reg = sys_read32(base + offset);
 
@@ -138,7 +113,7 @@ static inline uint32_t ahb_em32_read_field(uint32_t base, uint32_t offset, uint3
 static inline void ahb_em32_write_field(mm_reg_t base, uint32_t offset, uint32_t mask,
 					uint32_t value)
 {
-	uint32_t reg = 0;
+	uint32_t reg;
 
 	/* Optional: check value range */
 	if ((value << __builtin_ctz(mask)) & ~mask) {
@@ -208,15 +183,15 @@ static inline void em32_clk_gate_close(mm_reg_t base, uint32_t gate_idx)
 	em32_clk_gate_write(base, gate_idx, EM32_GATE_CLOSED);
 }
 
-uint32_t elan_em32_get_ahb_freq(const struct device *dev)
+static int elan_em32_get_ahb_freq(const struct device *dev, uint32_t *freq)
 {
 	const struct elan_em32_ahb_clock_control_config *config = dev->config;
 	mm_reg_t sysctrl_base = config->sysctrl_base;
 	mm_reg_t clkctrl_base = config->clkctrl_base;
-	uint32_t irc_freq = 0;
-	uint32_t irc_pll_freq = 0;
-	uint32_t main_freq = 0;
-	uint32_t ahb_freq = 0;
+	uint32_t irc_freq;
+	uint32_t irc_pll_freq;
+	uint32_t main_freq;
+	uint32_t ahb_freq;
 
 	uint32_t mirc_rcm =
 		ahb_em32_read_field(clkctrl_base, CLKCTRL_MIRC_CTRL_OFF, CLKCTRL_MIRC_RCM_MASK);
@@ -246,15 +221,16 @@ uint32_t elan_em32_get_ahb_freq(const struct device *dev)
 		irc_pll_freq = 32000 * 16 / 6;
 		break; /* 32M/107M */
 	default:
-		break;
+		LOG_ERR("Unsupported MIRC_RCM value %u", mirc_rcm);
+		return -EINVAL;
 	}
 
 	uint32_t hclk_sel =
 		ahb_em32_read_field(sysctrl_base, SYSCTRL_SYS_REG_CTRL_OFF, SYSCTRL_HCLK_SEL_MASK);
 	switch (hclk_sel) {
-	case 0x00: {
+	case 0x00:
 		main_freq = irc_freq;
-	} break;
+		break;
 
 	case 0x01: {
 		uint32_t xtal_hirc_sel = ahb_em32_read_field(sysctrl_base, SYSCTRL_SYS_REG_CTRL_OFF,
@@ -264,26 +240,28 @@ uint32_t elan_em32_get_ahb_freq(const struct device *dev)
 		} else {
 			main_freq = irc_pll_freq;
 		}
-	} break;
+		break;
+	}
 
-	case 0x02: {
+	case 0x02:
 		main_freq = 0xffffffffU;
-	} break;
+		break;
 
-	default: {
+	default:
 		main_freq = 0;
-	} break;
+		break;
 	}
 
 	uint32_t hclk_div =
 		ahb_em32_read_field(sysctrl_base, SYSCTRL_SYS_REG_CTRL_OFF, SYSCTRL_HCLK_DIV_MASK);
-	main_freq = main_freq >> (hclk_div);
+	main_freq = main_freq >> hclk_div;
 	ahb_freq = main_freq;
 
-	return ahb_freq;
+	*freq = ahb_freq;
+	return 0;
 }
 
-void elan_em32_set_ahb_freq(const struct device *dev)
+static int elan_em32_set_ahb_freq(const struct device *dev)
 {
 	const struct elan_em32_ahb_clock_control_config *config = dev->config;
 	mm_reg_t sysctrl_base = config->sysctrl_base;
@@ -292,14 +270,15 @@ void elan_em32_set_ahb_freq(const struct device *dev)
 	uint32_t clk_src = config->clock_source;
 	uint32_t freq_src = config->clock_frequency;
 	uint32_t pre_div = config->clock_divider;
-	bool bPLL = false;
+	bool b_pll;
+	int ret;
 
 	em32_clk_gate_open(sysctrl_base, EM32_GATE_PCLKG_AIP);
 
 	if (freq_src == EM32_CLK_FREQ_IRCLOW12 /* irc_freq_src */) {
 		ahb_em32_write_field(sysctrl_base, SYSCTRL_SYS_REG_CTRL_OFF, SYSCTRL_HCLK_DIV_MASK,
 				     pre_div);
-		return;
+		return 0;
 	}
 
 	ahb_em32_write_field(sysctrl_base, SYSCTRL_MISC_REG_CTRL_OFF, SYSCTRL_WAIT_COUNT_PASS_MASK,
@@ -313,10 +292,10 @@ void elan_em32_set_ahb_freq(const struct device *dev)
 	if (hclk_sel == 0x01) {
 		ahb_em32_write_field(sysctrl_base, SYSCTRL_SYS_REG_CTRL_OFF, SYSCTRL_HCLK_SEL_MASK,
 				     0x00);
-		delay_100us();
+		delay_us(100);
 		ahb_em32_write_field(clkctrl_base, CLKCTRL_SYS_PLL_CTRL_OFF, CLKCTRL_SYS_PLL_PD,
 				     0x01);
-		delay_1us();
+		delay_us(1);
 	}
 
 	if (clk_src == EM32_CLK_SRC_EXTERNAL1) {
@@ -324,9 +303,9 @@ void elan_em32_set_ahb_freq(const struct device *dev)
 				     0x02);
 	} else {
 		if (freq_src >> 4) {
-			bPLL = true;
+			b_pll = true;
 		} else {
-			bPLL = false;
+			b_pll = false;
 		}
 
 		uint32_t mirc_tall, mirc_tv12;
@@ -407,13 +386,13 @@ void elan_em32_set_ahb_freq(const struct device *dev)
 			break;
 		}
 
-		delay_100us();
+		delay_us(100);
 		ahb_em32_write_field(clkctrl_base, CLKCTRL_MIRC_CTRL_OFF, CLKCTRL_MIRC_RCM_MASK,
 				     (freq_src & 0x0f));
 		ahb_em32_write_field(sysctrl_base, SYSCTRL_SYS_REG_CTRL_OFF, SYSCTRL_XTAL_HIRC_SEL,
 				     0x00);
 
-		if (bPLL) {
+		if (b_pll) {
 			switch (freq_src) {
 			case EM32_CLK_FREQ_IRCHIGH64:
 				ahb_em32_write_field(clkctrl_base, CLKCTRL_SYS_PLL_CTRL_OFF,
@@ -441,24 +420,24 @@ void elan_em32_set_ahb_freq(const struct device *dev)
 
 			ahb_em32_write_field(clkctrl_base, CLKCTRL_LDO_PLL_OFF, CLKCTRL_PLL_LDO_PD,
 					     0x00);
-			delay_1us();
+			delay_us(1);
 			ahb_em32_write_field(clkctrl_base, CLKCTRL_LDO_PLL_OFF,
 					     CLKCTRL_PLL_LDO_VP_SEL, 0x00);
-			delay_10us();
+			delay_us(10);
 			ahb_em32_write_field(clkctrl_base, CLKCTRL_SYS_PLL_CTRL_OFF,
 					     CLKCTRL_SYS_PLL_PD, 0x00);
-			delay_1us();
+			delay_us(1);
 			while (ahb_em32_read_field(clkctrl_base, CLKCTRL_SYS_PLL_CTRL_OFF,
 						   CLKCTRL_SYS_PLL_STABLE) == 0) {
 			}
-			delay_1us();
+			delay_us(1);
 			ahb_em32_write_field(sysctrl_base, SYSCTRL_SYS_REG_CTRL_OFF,
 					     SYSCTRL_HCLK_SEL_MASK, 0x01);
-			delay_1us();
+			delay_us(1);
 		} else {
 			ahb_em32_write_field(sysctrl_base, SYSCTRL_SYS_REG_CTRL_OFF,
 					     SYSCTRL_HCLK_SEL_MASK, 0x00);
-			delay_100us();
+			delay_us(100);
 			ahb_em32_write_field(clkctrl_base, CLKCTRL_SYS_PLL_CTRL_OFF,
 					     CLKCTRL_SYS_PLL_PD, 0x01);
 		}
@@ -478,7 +457,12 @@ void elan_em32_set_ahb_freq(const struct device *dev)
 	ahb_em32_write_field(sysctrl_base, SYSCTRL_SYS_REG_CTRL_OFF, SYSCTRL_HCLK_DIV_MASK,
 			     pre_div);
 
-	ahb_count = elan_em32_get_ahb_freq(dev);
+	ret = elan_em32_get_ahb_freq(dev, &ahb_count);
+	if (ret) {
+		return ret;
+	}
+
+	return 0;
 }
 
 static int elan_em32_ahb_clock_control_on(const struct device *dev, clock_control_subsys_t sys)
@@ -499,14 +483,14 @@ static int elan_em32_ahb_clock_control_on(const struct device *dev, clock_contro
 	}
 
 	/* Accept known indices and the ALL marker. */
-	if ((clk_grp >= EM32_GATE_HCLKG_DMA) && (clk_grp <= EM32_GATE_PCLKG_SSP1)) {
-		/* Enabling a clock == open gate (clear the bit). */
-		em32_clk_gate_open(cfg->sysctrl_base, clk_grp);
-		return 0;
+	if ((clk_grp < EM32_GATE_HCLKG_DMA) || (clk_grp > EM32_GATE_PCLKG_SSP1)) {
+		LOG_ERR("Unknown clock group #%u", clk_grp);
+		return -EINVAL;
 	}
 
-	LOG_ERR("Unknown clock group #%u", clk_grp);
-	return -EINVAL;
+	/* Enabling a clock == open gate (clear the bit). */
+	em32_clk_gate_open(cfg->sysctrl_base, clk_grp);
+	return 0;
 }
 
 static int elan_em32_ahb_clock_control_off(const struct device *dev, clock_control_subsys_t sys)
@@ -524,21 +508,28 @@ static int elan_em32_ahb_clock_control_off(const struct device *dev, clock_contr
 		return 0;
 	}
 
-	if ((clk_grp >= EM32_GATE_HCLKG_DMA) && (clk_grp <= EM32_GATE_PCLKG_SSP1)) {
-		/* Disabling a clock == close gate (set the bit). */
-		em32_clk_gate_close(cfg->sysctrl_base, clk_grp);
-		return 0;
+	if ((clk_grp < EM32_GATE_HCLKG_DMA) || (clk_grp > EM32_GATE_PCLKG_SSP1)) {
+		LOG_ERR("Unknown clock group #%u", clk_grp);
+		return -EINVAL;
 	}
 
-	LOG_ERR("Unknown clock group #%u", clk_grp);
-	return -EINVAL;
+	/* Disabling a clock == close gate (set the bit). */
+	em32_clk_gate_close(cfg->sysctrl_base, clk_grp);
+	return 0;
 }
 
 static int elan_em32_ahb_clock_control_get_rate(const struct device *dev,
 						clock_control_subsys_t sys, uint32_t *rate)
 {
 	/* elan_em32_get_ahb_freq(dev) returns kHz; convert to Hz. */
-	uint32_t ahb_khz = elan_em32_get_ahb_freq(dev);
+	uint32_t ahb_khz;
+	int ret;
+
+	ret = elan_em32_get_ahb_freq(dev, &ahb_khz);
+	if (ret) {
+		return ret;
+	}
+
 	*rate = ahb_khz * 1000u;
 
 	return 0;
@@ -562,7 +553,7 @@ static bool dwt_try_enable(void)
 	 * Unlock DWT if a Lock Access Register is present.
 	 */
 #ifdef DWT_LAR
-	DWT->LAR = 0xC5ACCE55U;
+	DWT->LAR = DWT_UNLOCK_KEY;
 #endif
 
 	/*
@@ -577,7 +568,7 @@ static bool dwt_try_enable(void)
 	uint32_t c0 = DWT->CYCCNT;
 
 	for (volatile int i = 0; i < 1000; i++) {
-		__asm volatile("nop");
+		arch_nop();
 	}
 
 	uint32_t c1 = DWT->CYCCNT;
@@ -618,23 +609,25 @@ static int elan_em32_ahb_clock_control_init(const struct device *dev)
 	 * Configure AHB frequency and update internal clock state used by
 	 * the early delay path.
 	 */
-	elan_em32_set_ahb_freq(dev);
+	int ret;
+
+	ret = elan_em32_set_ahb_freq(dev);
+	if (ret) {
+		return ret;
+	}
 
 	return 0;
 }
 
-#define EM32_AHB_INST_INIT(inst)                                                                   \
-	static const struct elan_em32_ahb_clock_control_config em32_ahb_config_##inst = {          \
-		.sysctrl_base = DT_REG_ADDR(DT_NODELABEL(sysctrl)),                                \
-		.clkctrl_base = DT_REG_ADDR(DT_NODELABEL(clkctrl)),                                \
-		.infoctrl_base = DT_REG_ADDR(DT_NODELABEL(infoctrl)),                              \
-		.clock_source = DT_INST_PROP(inst, clock_source),                                  \
-		.clock_frequency = DT_INST_PROP(inst, clock_frequency),                            \
-		.clock_divider = DT_INST_PROP(inst, clock_divider),                                \
-	};                                                                                         \
-	DEVICE_DT_INST_DEFINE(inst, elan_em32_ahb_clock_control_init, NULL, NULL,                  \
-			      &em32_ahb_config_##inst, PRE_KERNEL_1,                               \
-			      CONFIG_CLOCK_CONTROL_INIT_PRIORITY,                                  \
-			      &elan_em32_ahb_clock_control_api)
+static const struct elan_em32_ahb_clock_control_config em32_ahb_config = {
+	.sysctrl_base = DT_REG_ADDR(DT_NODELABEL(sysctrl)),
+	.clkctrl_base = DT_REG_ADDR(DT_NODELABEL(clkctrl)),
+	.infoctrl_base = DT_REG_ADDR(DT_NODELABEL(infoctrl)),
+	.clock_source = DT_PROP(DT_NODELABEL(clk_ahb), clock_source),
+	.clock_frequency = DT_PROP(DT_NODELABEL(clk_ahb), clock_frequency),
+	.clock_divider = DT_PROP(DT_NODELABEL(clk_ahb), clock_divider),
+};
 
-DT_INST_FOREACH_STATUS_OKAY(EM32_AHB_INST_INIT)
+DEVICE_DT_DEFINE(DT_NODELABEL(clk_ahb_v2), elan_em32_ahb_clock_control_init, NULL, NULL,
+		 &em32_ahb_config, PRE_KERNEL_1, CONFIG_CLOCK_CONTROL_INIT_PRIORITY,
+		 &elan_em32_ahb_clock_control_api);

@@ -1,0 +1,33 @@
+#include <elan/32f967_dv_priv.dtsi>
+
+/*
+ * GPIO test pins described entirely in the device tree (the "DTS method").
+ *
+ *   PA14  -> output, toggled 1/0 every second
+ *   PB8   -> input,  read every second
+ *   PA15  -> input,  read every second
+ *
+ * The pins are exposed to the application through the standard `zephyr,user`
+ * node as `gpios` phandles (controller + pin + flags). The application reads
+ * them with GPIO_DT_SPEC_GET()/GPIO_DT_SPEC_GET_BY_IDX(); no register address
+ * is hard-coded in C. The em32 GPIO driver puts the pins in GPIO mode at init.
+ */
+/ {
+	zephyr_user: zephyr,user {
+		/* PA14 - output, toggled every second */
+		out-gpios = <&gpioa 14 GPIO_ACTIVE_HIGH>;
+
+		/* PB8 (index 0) and PA15 (index 1) - inputs, read every second */
+		in-gpios = <&gpiob 8 GPIO_ACTIVE_HIGH>,
+			   <&gpioa 15 GPIO_ACTIVE_HIGH>;
+	};
+};
+
+/* Enable the GPIO controllers used by the sample (disabled by board DTS) */
+&gpioa {
+	status = "okay";
+};
+
+&gpiob {
+	status = "okay";
+};

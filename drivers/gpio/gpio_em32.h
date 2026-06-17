@@ -6,8 +6,9 @@
 /**
  * @file header for EM32 GPIO
  *
- * This header exports the GPIO configuration function for use by the
- * pinctrl driver, following the STM32 design pattern.
+ * Internal GPIO driver header. Pinctrl now owns IOMUX / ALTFUNC /
+ * drive-strength directly (see pinctrl_em32.c) so there is no longer any
+ * cross-driver surface — only GPIO-driver-internal declarations live here.
  */
 
 #ifndef ZEPHYR_DRIVERS_GPIO_GPIO_EM32_H_
@@ -20,42 +21,39 @@
 extern "C" {
 #endif
 
+#ifdef CONFIG_EM32_WKUP_PINS
 /**
- * @brief Pin configuration bit field definitions
+ * @brief Register a GPIO pin as an EM32 WakeUp source.
  *
- * These match the definitions in pinctrl_soc.h for proper coordination.
+ * Called from gpio_em32_pin_configure() when the EM32_GPIO_WKUP flag is set.
+ * Mirrors STM32's stm32_pwr_wkup_pin_cfg_gpio().
+ *
+ * This function only REGISTERS the pin (logs + stores port/pin/flags). The
+ * hardware configuration (AF5 IOMUX + WAKEUP_REG WAKEUPEN + IRQ 3) is
+ * deferred to em32_pwr_wkup_pin_cfg_pupd(), called just before poweroff.
+ *
+ * @param dev   GPIO port device (gpioa or gpiob)
+ * @param pin   GPIO pin number (0-15)
+ * @param flags GPIO configuration flags (GPIO_ACTIVE_LOW → falling edge)
+ * @return 0 on success, -EINVAL if pin not mapped to a WKUP source
  */
-#define EM32_PINCFG_MODER_SHIFT   4
-#define EM32_PINCFG_OTYPER_SHIFT  6
-#define EM32_PINCFG_OSPEEDR_SHIFT 7
-#define EM32_PINCFG_PUPDR_SHIFT   9
-#define EM32_PINCFG_ODR_SHIFT     11
-#define EM32_PINCFG_DRIVE_SHIFT   13
-
-/* Pull-up/Pull-down values */
-#define EM32_PINCFG_NO_PULL   0x0
-#define EM32_PINCFG_PULL_UP   0x1
-#define EM32_PINCFG_PULL_DOWN 0x2
-
-/* Output type values */
-#define EM32_PINCFG_PUSH_PULL  0x0
-#define EM32_PINCFG_OPEN_DRAIN 0x1
+int em32_pwr_wkup_pin_cfg_gpio(const struct device *dev, gpio_pin_t pin, gpio_flags_t flags);
 
 /**
- * @brief Configure GPIO pin from pinctrl driver
+ * @brief Activate hardware wakeup configuration for all registered pins.
  *
- * This function is called by the pinctrl driver to configure a GPIO pin
- * with the specified multiplexing and electrical settings.
+ * Called from z_sys_poweroff() in poweroff.c just before entering deep sleep.
+ * Mirrors STM32's stm32_pwr_wkup_pin_cfg_pupd().
  *
- * @param dev GPIO port device (gpioa or gpiob)
- * @param pin Pin number (0-15)
- * @param conf Pin configuration (mode, type, speed, pull, drive)
- *             encoded as bit fields per EM32_PINCFG_* definitions
- * @param func Alternate function number (0=GPIO, 1-7=AF1-AF7)
- *
- * @return 0 on success, negative errno on failure
+ * For each pin registered by em32_pwr_wkup_pin_cfg_gpio():
+ *   1. Configures IOMUX to AF5 (WakeUp controller routing).
+ *   2. Sets WAKEUP_REG WAKEUPEN bit for the corresponding WKUP source.
+ *   3. Sets trigger polarity (FALLINGEDGE for GPIO_ACTIVE_LOW).
+ *   4. Clears pending wakeup status (WSTATUSCLR).
+ *   5. Enables WakeUp_Int_IRQn (IRQ 3) in NVIC.
  */
-int gpio_em32_configure(const struct device *dev, gpio_pin_t pin, uint32_t conf, uint32_t func);
+void em32_pwr_wkup_pin_cfg_pupd(void);
+#endif /* CONFIG_EM32_WKUP_PINS */
 
 #ifdef __cplusplus
 }

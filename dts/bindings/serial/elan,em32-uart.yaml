@@ -31,3 +31,7 @@ properties:
 
   pinctrl-names:
     required: true
+
+  interrupts:
+    type: array
+    description: UART interrupt configuration.

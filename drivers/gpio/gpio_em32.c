@@ -3,26 +3,6 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-/**
- * @file
- * @brief GPIO driver for EM32F967 microcontroller (EM32-style)
- *
- * This driver provides GPIO functionality for the EM32F967 microcontroller.
- *
- * Key Features:
- * - EM32-style driver architecture and API patterns
- * - Proper pinctrl coordination for pin multiplexing
- * - Complete interrupt support with all trigger types
- * - Clock control and power management
- *
- * IMPORTANT: Register Mapping Note
- * The EM32 GPIO hardware follows ARM Cortex-M GPIO specification.
- * - DATAOUTSET (0x10) is actually OUTENSET (Output Enable Set)
- * - DATAOUTCLR (0x14) is actually OUTENCLR (Output Enable Clear)
- * - DATAOUT (0x04) controls the actual output values
- * - DATA (0x00) reads the current pin states
- */
-
 #define DT_DRV_COMPAT elan_em32_gpio
 
 #include <errno.h>
@@ -39,21 +19,18 @@
 #include <zephyr/pm/device.h>
 #include <zephyr/pm/device_runtime.h>
 
+#include <cmsis_core.h>
 #include <soc.h>
 #include "gpio_em32.h"
 
 LOG_MODULE_REGISTER(gpio_em32, CONFIG_GPIO_LOG_LEVEL);
 
-/* Forward declaration so helper functions can accept pointer to config
- * before the full struct is defined later in this file.
- */
-struct gpio_em32_config;
-
 /* GPIO register offsets (EM32F967) */
-#define GPIO_DATA_OFFSET            0x00
-#define GPIO_DATAOUT_OFFSET         0x04
-#define GPIO_DATAOUTSET_OFFSET      0x10
-#define GPIO_DATAOUTCLR_OFFSET      0x14
+#define GPIO_DATA_OFFSET     0x00
+#define GPIO_DATAOUT_OFFSET  0x04
+#define GPIO_OUTENSET_OFFSET 0x10 /* Output ENable SET: write 1 to enable a pin's output driver */
+#define GPIO_OUTENCLR_OFFSET                                                                       \
+	0x14 /* Output ENable CLeaR: write 1 to disable a pin's output driver */
 #define GPIO_ALTFUNCSET_OFFSET      0x18
 #define GPIO_ALTFUNCCLR_OFFSET      0x1C
 #define GPIO_INTENSET_OFFSET        0x20
@@ -64,45 +41,19 @@ struct gpio_em32_config;
 #define GPIO_INTPOLCLR_OFFSET       0x34
 #define GPIO_INTSTATUSANDCLR_OFFSET 0x38
 
-/* Sysctrl-relative offsets (sysctrl base comes from DTS: syscon@40030000) */
-#define EM32_IOMUXPACTRL_OFFSET  0x200 /* PA[7:0] control */
-#define EM32_IOMUXPACTRL2_OFFSET 0x204 /* PA[15:8] control */
-#define EM32_IOMUXPBCTRL_OFFSET  0x208 /* PB[7:0] control */
-#define EM32_IOMUXPBCTRL2_OFFSET 0x20C /* PB[15:8] control */
-
 /* EM32F967 Pull-up/Pull-down Control Registers */
 #define EM32_IOPUPACTRL_OFFSET 0x214 /* PA pull control */
 #define EM32_IOPUPBCTRL_OFFSET 0x218 /* PB pull control */
-
-/* EM32F967 High Drive Control Registers */
-#define EM32_IO_HD_PA_CTRL_OFFSET 0x21C /* PA high drive control */
-#define EM32_IO_HD_PB_CTRL_OFFSET 0x220 /* PB high drive control */
 
 /* EM32F967 Open Drain Control Registers */
 #define EM32_IOODEPACTRL_OFFSET 0x22C /* PA open drain */
 #define EM32_IOODEPBCTRL_OFFSET 0x230 /* PB open drain */
 
-/* EM32F967 Clock Gating Control (sysctrl-relative) */
-#define EM32_CLKGATE_OFFSET 0x100 /* Clock Gating Control Register */
-
-/* GPIO MUX Values - From EM32F967 specification */
-#define EM32_GPIO_MUX_GPIO 0x00 /* GPIO function */
-#define EM32_GPIO_MUX_ALT1 0x01 /* Alternate function 1 */
-#define EM32_GPIO_MUX_ALT2 0x02 /* Alternate function 2 (UART) */
-#define EM32_GPIO_MUX_ALT3 0x03 /* Alternate function 3 */
-
 /* Pull-up/Pull-down values */
 #define EM32_GPIO_PUPD_FLOATING 0x00 /* No pull */
-#define EM32_GPIO_PUPD_PULLUP   0x01 /* Pull-up */
-#define EM32_GPIO_PUPD_PULLDOWN 0x02 /* Pull-down */
-
-/* Use Zephyr clock_control API via the EM32 AHB clock driver */
-
-/* EM32-style clock control structure */
-struct em32_pclken {
-	uint32_t bus;
-	uint32_t enr;
-};
+#define EM32_GPIO_PUPD_PULLUP   0x01 /* Pull-up 3.3V 66K and 1.8V 140K */
+#define EM32_GPIO_PUPD_PULLUP1  0x02 /* Pull-up 3.3V 4.7K and 1.8V 8.53K */
+#define EM32_GPIO_PUPD_PULLDOWN 0x03 /* Pull-down */
 
 /* GPIO configuration structure (EM32-style) */
 struct gpio_em32_config {
@@ -118,8 +69,6 @@ struct gpio_em32_config {
 	uint32_t clock_gate_id;
 	/* Port identifier (0=PORTA, 1=PORTB) */
 	uint32_t port;
-	/* Clock control */
-	struct em32_pclken pclken;
 	/* IRQ number */
 	uint32_t irq;
 	/* IRQ configuration function */
@@ -136,41 +85,6 @@ struct gpio_em32_data {
 	uint32_t pin_has_clock_enabled;
 };
 
-/**
- * @brief Configure pin multiplexing (similar to EM32 alternate function)
- */
-static int em32_gpio_configure_mux(const struct gpio_em32_config *config, uint32_t pin,
-				   uint32_t mux)
-{
-	uint32_t reg_addr;
-	uint32_t shift;
-	uint32_t mask;
-	uint32_t reg_val;
-
-	/* Determine register address based on port and pin */
-	if (config->port == 0) { /* PORTA */
-		reg_addr = config->sysctrl_base +
-			   ((pin < 8) ? EM32_IOMUXPACTRL_OFFSET : EM32_IOMUXPACTRL2_OFFSET);
-		shift = (pin % 8) * 4;
-	} else { /* PORTB */
-		reg_addr = config->sysctrl_base +
-			   ((pin < 8) ? EM32_IOMUXPBCTRL_OFFSET : EM32_IOMUXPBCTRL2_OFFSET);
-		shift = (pin % 8) * 4;
-	}
-
-	mask = 0x7 << shift; /* 3-bit mask */
-
-	reg_val = sys_read32(reg_addr);
-	reg_val = (reg_val & ~mask) | ((mux & 0x7) << shift);
-	sys_write32(reg_val, reg_addr);
-
-	LOG_DBG("Configured P%c%d MUX to %d", (config->port == 0) ? 'A' : 'B', pin, mux);
-	return 0;
-}
-
-/**
- * @brief Configure pin pull-up/pull-down (similar to EM32 PUPDR)
- */
 static int em32_gpio_configure_pull(const struct gpio_em32_config *config, uint32_t pin,
 				    uint32_t pull)
 {
@@ -192,9 +106,6 @@ static int em32_gpio_configure_pull(const struct gpio_em32_config *config, uint3
 	return 0;
 }
 
-/**
- * @brief Configure pin open drain (similar to EM32 OTYPER)
- */
 static int em32_gpio_configure_open_drain(const struct gpio_em32_config *config, uint32_t pin,
 					  bool open_drain)
 {
@@ -219,33 +130,6 @@ static int em32_gpio_configure_open_drain(const struct gpio_em32_config *config,
 	return 0;
 }
 
-/**
- * @brief Configure pin high-drive (EM32F967 specific)
- */
-static int em32_gpio_configure_high_drive(const struct gpio_em32_config *config, uint32_t pin,
-					  bool high_drive)
-{
-	uint32_t reg_addr;
-	uint32_t pin_mask;
-	uint32_t reg_val;
-
-	reg_addr = config->sysctrl_base +
-		   ((config->port == 0) ? EM32_IO_HD_PA_CTRL_OFFSET : EM32_IO_HD_PB_CTRL_OFFSET);
-	pin_mask = BIT(pin);
-
-	reg_val = sys_read32(reg_addr);
-	if (high_drive) {
-		reg_val |= pin_mask;
-	} else {
-		reg_val &= ~pin_mask;
-	}
-	sys_write32(reg_val, reg_addr);
-
-	LOG_DBG("Configured P%c%d high-drive: %s", (config->port == 0) ? 'A' : 'B', pin,
-		high_drive ? "enabled" : "disabled");
-	return 0;
-}
-
 static inline uint32_t em32_gpio_read(const struct device *dev, uint32_t offset)
 {
 	const struct gpio_em32_config *config = dev->config;
@@ -260,15 +144,12 @@ static inline void em32_gpio_write(const struct device *dev, uint32_t offset, ui
 	sys_write32(value, config->base + offset);
 }
 
-/**
- * @brief Configure GPIO pin (EM32-style)
- */
 static int gpio_em32_pin_configure(const struct device *dev, gpio_pin_t pin, gpio_flags_t flags)
 {
 	const struct gpio_em32_config *config = dev->config;
 	struct gpio_em32_data *data = dev->data;
 	uint32_t pin_mask = BIT(pin);
-	int ret = 0;
+	int ret;
 
 	if (pin >= 16) {
 		return -EINVAL;
@@ -276,163 +157,134 @@ static int gpio_em32_pin_configure(const struct device *dev, gpio_pin_t pin, gpi
 
 	LOG_DBG("Configuring port %d pin %d with flags 0x%08X", config->port, pin, flags);
 
-	/* Handle GPIO_ACTIVE_LOW flag for interrupt inversion */
+#ifdef CONFIG_PM_DEVICE_RUNTIME
+	ret = pm_device_runtime_get(dev);
+	if (ret < 0) {
+		LOG_ERR("pm_device_runtime_get failed: %d", ret);
+		return ret;
+	}
+#endif
+
 	if (flags & GPIO_ACTIVE_LOW) {
 		data->common.invert |= pin_mask;
-		LOG_DBG("Pin %d configured as active-low (invert bit set)", pin);
 	} else {
 		data->common.invert &= ~pin_mask;
 	}
 
-	/* Enable clock for this pin if needed (EM32-style power management) */
 	if ((flags & (GPIO_OUTPUT | GPIO_INPUT)) && !(data->pin_has_clock_enabled & pin_mask)) {
-		/* Clock management would go here in a real implementation */
 		data->pin_has_clock_enabled |= pin_mask;
 	}
 
-	/* Set pin MUX to GPIO function (equivalent to EM32 alternate function) */
-	ret = em32_gpio_configure_mux(config, pin, EM32_GPIO_MUX_GPIO);
-	if (ret < 0) {
-		return ret;
-	}
-
-	/* Set pin to GPIO mode (not alternate function mode) */
-	em32_gpio_write(dev, GPIO_ALTFUNCCLR_OFFSET, pin_mask);
-
-	/* Configure pin direction using ARM Cortex-M GPIO standard method */
-	/* According to ARM Cortex-M GPIO specification:
-	 * - DATAOUTSET/DATAOUTCLR registers at 0x10/0x14 are actually OUTENSET/OUTENCLR (output
-	 * enable)
-	 * - DATAOUT register at 0x04 controls output value when pin is in output mode
-	 * - DATA register at 0x00 reads current pin state (input or output)
-	 */
+	/* Direction + initial value. */
 	if (flags & GPIO_OUTPUT) {
-		/* OUTPUT mode: Enable output direction using DATAOUTSET (actually OUTENSET) */
-		em32_gpio_write(dev, GPIO_DATAOUTSET_OFFSET,
-				pin_mask); /* Enable output direction */
+		/* Enable the output driver for this pin (OUTENSET is write-1-to-set). */
+		em32_gpio_write(dev, GPIO_OUTENSET_OFFSET, pin_mask);
 
-		/* Set initial output value using DATAOUT register */
-		uint32_t dout = em32_gpio_read(dev, GPIO_DATAOUT_OFFSET);
-
-		if (flags & GPIO_OUTPUT_INIT_HIGH) {
-			dout |= pin_mask; /* Set output high */
-		} else {
-			dout &= ~pin_mask; /* Set output low (default) */
-		}
-		em32_gpio_write(dev, GPIO_DATAOUT_OFFSET, dout);
-
-		/* Enable high-drive for this pin if initial state requests HIGH.
-		 * Use IO_HD_PA_CTRL / IO_HD_PB_CTRL registers (one bit per pin).
-		 * We enable high-drive when `GPIO_OUTPUT_INIT_HIGH` is set so that
-		 * clients that want a strong HIGH level can request it. If you prefer
-		 * different semantics, we can change this to another flag or DT option.
+		/*
+		 * Apply the initial output level. The data value lives only in
+		 * DATAOUT, so this is a read-modify-write; guard it against
+		 * preemption/ISR races on other pins of the same port.
 		 */
-		if (flags & GPIO_OUTPUT_INIT_HIGH) {
-			em32_gpio_configure_high_drive(config, pin, true);
-		} else {
-			/* Clear high-drive bit when output configured low (keep default) */
-			em32_gpio_configure_high_drive(config, pin, false);
+		if (flags & (GPIO_OUTPUT_INIT_HIGH | GPIO_OUTPUT_INIT_LOW)) {
+			unsigned int key = irq_lock();
+			uint32_t dout = em32_gpio_read(dev, GPIO_DATAOUT_OFFSET);
+
+			if (flags & GPIO_OUTPUT_INIT_HIGH) {
+				dout |= pin_mask;
+			} else {
+				dout &= ~pin_mask;
+			}
+			em32_gpio_write(dev, GPIO_DATAOUT_OFFSET, dout);
+			irq_unlock(key);
 		}
 	} else {
-		/* INPUT mode: Disable output direction using DATAOUTCLR (actually OUTENCLR) */
-		em32_gpio_write(dev, GPIO_DATAOUTCLR_OFFSET,
-				pin_mask); /* Disable output direction (input mode) */
-
-		/* When switching to input, clear high-drive for safety */
-		em32_gpio_configure_high_drive(config, pin, false);
+		/* Disable the output driver (input mode). */
+		em32_gpio_write(dev, GPIO_OUTENCLR_OFFSET, pin_mask);
 	}
 
-	/* Configure pull-up/pull-down (EM32-style) */
+	/* Pull resistor — decode directly from Zephyr flags */
+	uint32_t pupd = EM32_GPIO_PUPD_FLOATING;
+
 	if (flags & GPIO_PULL_UP) {
-		ret = em32_gpio_configure_pull(config, pin, EM32_GPIO_PUPD_PULLUP);
+		pupd = EM32_GPIO_PUPD_PULLUP;
 	} else if (flags & GPIO_PULL_DOWN) {
-		ret = em32_gpio_configure_pull(config, pin, EM32_GPIO_PUPD_PULLDOWN);
-	} else {
-		ret = em32_gpio_configure_pull(config, pin, EM32_GPIO_PUPD_FLOATING);
+		pupd = EM32_GPIO_PUPD_PULLDOWN;
 	}
-
+	ret = em32_gpio_configure_pull(config, pin, pupd);
 	if (ret < 0) {
-		return ret;
+		goto out;
 	}
 
-	/* Configure open drain if requested (EM32-style) */
-	if (flags & GPIO_OPEN_DRAIN) {
-		ret = em32_gpio_configure_open_drain(config, pin, true);
-	} else {
-		ret = em32_gpio_configure_open_drain(config, pin, false);
-	}
+	ret = em32_gpio_configure_open_drain(config, pin, (flags & GPIO_OPEN_DRAIN) != 0U);
 
+out:
+#ifdef CONFIG_PM_DEVICE_RUNTIME
+	(void)pm_device_runtime_put(dev);
+#endif
 	return ret;
 }
 
-/**
- * @brief Get raw port value (EM32-style)
- */
 static int gpio_em32_port_get_raw(const struct device *dev, uint32_t *value)
 {
 	*value = em32_gpio_read(dev, GPIO_DATA_OFFSET);
 	return 0;
 }
 
-/**
- * @brief Set masked raw port value (EM32-style)
+/*
+ * The EM32 GPIO block has no atomic data set/clear register: output data lives
+ * only in DATAOUT. (Offsets 0x10/0x14 are OUTENSET/OUTENCLR — output-enable, not
+ * data.) Every output update is therefore a read-modify-write on DATAOUT, guarded
+ * with irq_lock() so a preemption or ISR touching another pin of the same port
+ * cannot lose an update.
  */
 static int gpio_em32_port_set_masked_raw(const struct device *dev, uint32_t mask, uint32_t value)
 {
-	uint32_t current_output;
+	unsigned int key = irq_lock();
+	uint32_t dout = em32_gpio_read(dev, GPIO_DATAOUT_OFFSET);
 
-	/* Read current output state */
-	current_output = em32_gpio_read(dev, GPIO_DATAOUT_OFFSET);
-
-	/* Update only the masked bits */
-	current_output = (current_output & ~mask) | (value & mask);
-
-	/* Write back the updated value */
-	em32_gpio_write(dev, GPIO_DATAOUT_OFFSET, current_output);
+	dout = (dout & ~mask) | (value & mask);
+	em32_gpio_write(dev, GPIO_DATAOUT_OFFSET, dout);
+	irq_unlock(key);
 
 	return 0;
 }
 
-/**
- * @brief Set raw port bits (EM32-style)
- */
 static int gpio_em32_port_set_bits_raw(const struct device *dev, uint32_t pins)
 {
+	unsigned int key = irq_lock();
 	uint32_t dout = em32_gpio_read(dev, GPIO_DATAOUT_OFFSET);
 
 	dout |= pins;
 	em32_gpio_write(dev, GPIO_DATAOUT_OFFSET, dout);
+	irq_unlock(key);
+
 	return 0;
 }
 
-/**
- * @brief Clear raw port bits (EM32-style)
- */
 static int gpio_em32_port_clear_bits_raw(const struct device *dev, uint32_t pins)
 {
+	unsigned int key = irq_lock();
 	uint32_t dout = em32_gpio_read(dev, GPIO_DATAOUT_OFFSET);
 
 	dout &= ~pins;
 	em32_gpio_write(dev, GPIO_DATAOUT_OFFSET, dout);
+	irq_unlock(key);
+
 	return 0;
 }
 
-/**
- * @brief Toggle port bits (EM32-style)
- */
 static int gpio_em32_port_toggle_bits(const struct device *dev, uint32_t pins)
 {
+	unsigned int key = irq_lock();
 	uint32_t dout = em32_gpio_read(dev, GPIO_DATAOUT_OFFSET);
 
 	dout ^= pins;
 	em32_gpio_write(dev, GPIO_DATAOUT_OFFSET, dout);
+	irq_unlock(key);
 
 	return 0;
 }
 
-/**
- * @brief Configure pin interrupt (EM32-style)
- */
 static int gpio_em32_pin_interrupt_configure(const struct device *dev, gpio_pin_t pin,
 					     enum gpio_int_mode mode, enum gpio_int_trig trig)
 {
@@ -474,12 +326,6 @@ static int gpio_em32_pin_interrupt_configure(const struct device *dev, gpio_pin_
 			em32_gpio_write(dev, GPIO_INTPOLSET_OFFSET, pin_mask); /* High level */
 		}
 		break;
-	case GPIO_INT_TRIG_BOTH:
-		/* EM32F967 doesn't support both edges directly, use rising edge */
-		em32_gpio_write(dev, GPIO_INTTYPEEDGESET_OFFSET, pin_mask); /* Edge triggered */
-		em32_gpio_write(dev, GPIO_INTPOLSET_OFFSET, pin_mask);      /* Rising edge */
-		LOG_WRN("Both edge trigger not fully supported, using rising edge");
-		break;
 	default:
 		return -EINVAL;
 	}
@@ -498,16 +344,9 @@ static int gpio_em32_pin_interrupt_configure(const struct device *dev, gpio_pin_
 		inten, itype, ipol);
 
 	/* Debug: Show final interrupt configuration */
-	const char *trig_str;
-
-	if (trig == GPIO_INT_TRIG_LOW) {
-		trig_str = "LOW/FALLING";
-	} else if (trig == GPIO_INT_TRIG_HIGH) {
-		trig_str = "HIGH/RISING";
-	} else {
-		trig_str = "BOTH";
-	}
-
+	const char *trig_str = (trig == GPIO_INT_TRIG_LOW)    ? "LOW/FALLING"
+			       : (trig == GPIO_INT_TRIG_HIGH) ? "HIGH/RISING"
+							      : "BOTH";
 	const char *mode_str = (mode == GPIO_INT_MODE_EDGE) ? "EDGE" : "LEVEL";
 
 	LOG_DBG("Final interrupt config: %s %s trigger", mode_str, trig_str);
@@ -515,9 +354,6 @@ static int gpio_em32_pin_interrupt_configure(const struct device *dev, gpio_pin_
 	return 0;
 }
 
-/**
- * @brief Manage GPIO callback (EM32-style)
- */
 static int gpio_em32_manage_callback(const struct device *dev, struct gpio_callback *callback,
 				     bool set)
 {
@@ -526,9 +362,6 @@ static int gpio_em32_manage_callback(const struct device *dev, struct gpio_callb
 	return gpio_manage_callback(&data->callbacks, callback, set);
 }
 
-/**
- * @brief GPIO interrupt handler
- */
 static void gpio_em32_isr(const struct device *dev)
 {
 	const struct gpio_em32_config *config = dev->config;
@@ -551,9 +384,73 @@ static void gpio_em32_isr(const struct device *dev)
 	gpio_fire_callbacks(&data->callbacks, dev, int_status);
 }
 
+#ifdef CONFIG_GPIO_GET_CONFIG
+/**
+ * @brief Read back the current pin configuration (Phase 3)
+ *
+ * @param dev   GPIO port device
+ * @param pin   Pin number (0-15)
+ * @param flags Output: Zephyr GPIO flags representing current HW state
+ * @return 0 on success, -EINVAL for invalid pin
+ */
+static int gpio_em32_pin_get_config(const struct device *dev, gpio_pin_t pin, gpio_flags_t *flags)
+{
+	const struct gpio_em32_config *config = dev->config;
+	gpio_flags_t result = 0;
+	uint32_t pin_mask = BIT(pin);
+
+	if (pin >= 16U) {
+		return -EINVAL;
+	}
+
+	/* Direction: read OUTENSET — set bit means output enabled */
+	uint32_t outen = sys_read32(config->base + GPIO_OUTENSET_OFFSET);
+
+	if (outen & pin_mask) {
+		result |= GPIO_OUTPUT;
+		/* Current output value */
+		uint32_t dout = sys_read32(config->base + GPIO_DATAOUT_OFFSET);
+
+		if (dout & pin_mask) {
+			result |= GPIO_OUTPUT_INIT_HIGH;
+		} else {
+			result |= GPIO_OUTPUT_INIT_LOW;
+		}
+	} else {
+		result |= GPIO_INPUT;
+	}
+
+	/* Pull resistor: read 2-bit PUPD field */
+	uint32_t pupd_addr = config->sysctrl_base + ((config->port == 0) ? EM32_IOPUPACTRL_OFFSET
+									 : EM32_IOPUPBCTRL_OFFSET);
+	uint32_t pupd_shift = (uint32_t)pin * 2U;
+	uint32_t pupd_val = (sys_read32(pupd_addr) >> pupd_shift) & 0x3U;
+
+	if (pupd_val == EM32_GPIO_PUPD_PULLUP) {
+		result |= GPIO_PULL_UP;
+	} else if (pupd_val == EM32_GPIO_PUPD_PULLDOWN) {
+		result |= GPIO_PULL_DOWN;
+	}
+
+	/* Open-drain: read OD register */
+	uint32_t od_addr = config->sysctrl_base + ((config->port == 0) ? EM32_IOODEPACTRL_OFFSET
+								       : EM32_IOODEPBCTRL_OFFSET);
+
+	if (sys_read32(od_addr) & pin_mask) {
+		result |= GPIO_OPEN_DRAIN;
+	}
+
+	*flags = result;
+	return 0;
+}
+#endif /* CONFIG_GPIO_GET_CONFIG */
+
 /* GPIO driver API (EM32-style) */
 static DEVICE_API(gpio, gpio_em32_driver_api) = {
 	.pin_configure = gpio_em32_pin_configure,
+#ifdef CONFIG_GPIO_GET_CONFIG
+	.pin_get_config = gpio_em32_pin_get_config,
+#endif
 	.port_get_raw = gpio_em32_port_get_raw,
 	.port_set_masked_raw = gpio_em32_port_set_masked_raw,
 	.port_set_bits_raw = gpio_em32_port_set_bits_raw,
@@ -563,87 +460,6 @@ static DEVICE_API(gpio, gpio_em32_driver_api) = {
 	.manage_callback = gpio_em32_manage_callback,
 };
 
-/* ============================================================================
- * Exported API for Pinctrl Driver (EM32-style integration)
- * ============================================================================
- */
-
-/**
- * @brief Configure GPIO pin from pinctrl driver
- *
- * This function is called by the pinctrl driver to configure a GPIO pin
- * with the specified multiplexing and electrical settings.
- *
- * @param dev GPIO port device (gpioa or gpiob)
- * @param pin Pin number (0-15)
- * @param conf Pin configuration (mode, type, speed, pull, drive)
- * @param func Alternate function number (0=GPIO, 1-7=AF1-AF7)
- * @return 0 on success, negative errno on failure
- */
-int gpio_em32_configure(const struct device *dev, gpio_pin_t pin, uint32_t conf, uint32_t func)
-{
-	const struct gpio_em32_config *config = dev->config;
-	const struct device *clk_dev = config->clock_dev;
-	int clk_ret;
-	int ret;
-
-	if (pin >= 16) {
-		LOG_ERR("Invalid pin number: %d", pin);
-		return -EINVAL;
-	}
-
-	LOG_DBG("%s: port=%d pin=%d func=%d conf=0x%08X", __func__, config->port, pin, func, conf);
-
-	/* Ensure clock is enabled for this GPIO port via Zephyr clock_control */
-	clk_ret = clock_control_on(clk_dev, UINT_TO_POINTER(config->clock_gate_id));
-	if (clk_ret < 0) {
-		LOG_ERR("Turn on AHB clock fail %d.", clk_ret);
-		return clk_ret;
-	}
-
-	/* Configure pin MUX (IOMUX registers) */
-	ret = em32_gpio_configure_mux(config, pin, func);
-	if (ret < 0) {
-		LOG_ERR("Failed to configure MUX for P%c%d", 'A' + config->port, pin);
-		return ret;
-	}
-
-	/* Configure pull-up/pull-down from conf */
-	uint32_t pupd = (conf >> EM32_PINCFG_PUPDR_SHIFT) & 0x3;
-
-	ret = em32_gpio_configure_pull(config, pin, pupd);
-	if (ret < 0) {
-		LOG_ERR("Failed to configure pull for P%c%d", 'A' + config->port, pin);
-		return ret;
-	}
-
-	/* Configure open-drain from conf */
-	bool open_drain = (conf >> EM32_PINCFG_OTYPER_SHIFT) & 0x1;
-
-	ret = em32_gpio_configure_open_drain(config, pin, open_drain);
-	if (ret < 0) {
-		LOG_ERR("Failed to configure open-drain for P%c%d", 'A' + config->port, pin);
-		return ret;
-	}
-
-	/* Configure high-drive from conf (EM32-specific) */
-	bool high_drive = (conf >> EM32_PINCFG_DRIVE_SHIFT) & 0x1;
-
-	ret = em32_gpio_configure_high_drive(config, pin, high_drive);
-	if (ret < 0) {
-		LOG_ERR("Failed to configure high-drive for P%c%d", 'A' + config->port, pin);
-		return ret;
-	}
-
-	LOG_DBG("P%c%d configured: func=%d, pupd=%d, od=%d, hd=%d", 'A' + config->port, pin, func,
-		pupd, open_drain, high_drive);
-
-	return 0;
-}
-
-/**
- * @brief Initialize GPIO device (EM32-style)
- */
 static int gpio_em32_init(const struct device *dev)
 {
 	const struct gpio_em32_config *config = dev->config;
@@ -677,11 +493,45 @@ static int gpio_em32_init(const struct device *dev)
 	/* Configure interrupt */
 	config->irq_config_func(dev);
 
+#ifdef CONFIG_PM_DEVICE_RUNTIME
+	/* Phase 5: Enable runtime PM — clock will be managed per-transaction */
+	pm_device_runtime_enable(dev);
+#endif
+
 	LOG_INF("EM32 GPIO port %d initialized successfully", config->port);
 	return 0;
 }
 
-/* Device tree initialization macros (EM32-style) */
+/**
+ * @brief PM device action handler for gpio_em32
+ *
+ * @param dev  GPIO port device (gpioa or gpiob)
+ * @param action PM action (SUSPEND / RESUME / TURN_OFF / TURN_ON)
+ * @return 0 on success, -ENOTSUP for unsupported actions
+ */
+static int __maybe_unused gpio_em32_pm_action(const struct device *dev,
+					      enum pm_device_action action)
+{
+	switch (action) {
+	case PM_DEVICE_ACTION_SUSPEND:
+		if (pm_device_wakeup_is_enabled(dev)) {
+			LOG_DBG("gpio_em32: %s suspending — wakeup IRQ stays armed", dev->name);
+		} else {
+			LOG_DBG("gpio_em32: %s suspending (no wakeup)", dev->name);
+		}
+		return 0;
+
+	case PM_DEVICE_ACTION_RESUME:
+		/* GPIO was not powered down during PDSW1 — nothing to restore. */
+		LOG_DBG("gpio_em32: %s resumed", dev->name);
+		return 0;
+
+	default:
+		/* TURN_OFF / TURN_ON not supported (no power gating of GPIOA). */
+		return -ENOTSUP;
+	}
+}
+
 #define GPIO_EM32_IRQ_CONFIG_FUNC(n)                                                               \
 	static void gpio_em32_irq_config_func_##n(const struct device *dev)                        \
 	{                                                                                          \
@@ -695,6 +545,8 @@ static int gpio_em32_init(const struct device *dev)
 #define GPIO_EM32_INIT(n)                                                                          \
 	GPIO_EM32_IRQ_CONFIG_FUNC(n)                                                               \
                                                                                                    \
+	PM_DEVICE_DT_INST_DEFINE(n, gpio_em32_pm_action);                                          \
+                                                                                                   \
 	static const struct gpio_em32_config gpio_em32_config_##n = {                              \
 		.common =                                                                          \
 			{                                                                          \
@@ -703,20 +555,15 @@ static int gpio_em32_init(const struct device *dev)
 		.base = DT_INST_REG_ADDR(n),                                                       \
 		.sysctrl_base = DT_REG_ADDR(DT_NODELABEL(sysctrl)),                                \
 		.clock_dev = DEVICE_DT_GET(DT_INST_CLOCKS_CTLR(n)),                                \
-		.clock_gate_id = DT_INST_CLOCKS_CELL_BY_IDX(n, 0, clk_id),                        \
+		.clock_gate_id = DT_INST_CLOCKS_CELL_BY_IDX(n, 0, clk_id),                         \
 		.port = DT_INST_PROP(n, port_id),                                                  \
-		.pclken =                                                                          \
-			{                                                                          \
-				.bus = 0,                                                          \
-				.enr = 0,                                                          \
-			},                                                                         \
-		.irq = DT_INST_IRQN(n),                                                            \
 		.irq_config_func = gpio_em32_irq_config_func_##n,                                  \
 	};                                                                                         \
                                                                                                    \
 	static struct gpio_em32_data gpio_em32_data_##n;                                           \
                                                                                                    \
-	DEVICE_DT_INST_DEFINE(n, gpio_em32_init, NULL, &gpio_em32_data_##n, &gpio_em32_config_##n, \
-			      PRE_KERNEL_1, CONFIG_GPIO_INIT_PRIORITY, &gpio_em32_driver_api);
+	DEVICE_DT_INST_DEFINE(n, gpio_em32_init, PM_DEVICE_DT_INST_GET(n), &gpio_em32_data_##n,    \
+			      &gpio_em32_config_##n, PRE_KERNEL_1, CONFIG_GPIO_INIT_PRIORITY,      \
+			      &gpio_em32_driver_api);
 
 DT_INST_FOREACH_STATUS_OKAY(GPIO_EM32_INIT)
