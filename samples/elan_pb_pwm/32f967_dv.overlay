@@ -1,0 +1,54 @@
+/*
+ * Copyright (c) 2026 ELAN Microelectronics Corp.
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * Overlay for samples/elan_pb_pwm — route all six EM32F967 PWM channels
+ * (PWMA..PWMF) simultaneously to the Port-B "alternative" pin assignment
+ * (IP_Share[18] = PWM_S = 1):
+ *
+ *   PWMA: PB11 (N)     PWMD: PB10 (P)
+ *   PWMB: PB13 (N)     PWME: PB12 (P)
+ *   PWMC: PB15 (N)     PWMF: PB14 (P)
+ *
+ * The N outputs on PB11/PB13/PB15 only appear when the driver also sets
+ * PWM_SW1/PWM_SW2/PWM_SW3 = 1 (IP_Share bits 15/16/17). The EM32 PWM
+ * driver does this automatically when `output-type = <2>` (BOTH) and
+ * `use-port-a` is absent or false.
+ *
+ * The pinctrl nodes (pwma_pb10_p, pwma_pb11_n, pwmb_pb12_p, pwmb_pb13_n,
+ * pwmc_pb14_p, pwmc_pb15_n) live in zephyr/dts/arm/elan/em32f967-pinctrl.dtsi
+ * and use IOMUX = AF1 for PB10..PB15.
+ */
+
+#include <elan/32f967_dv_priv.dtsi>
+
+&pwm0 {
+	/*
+	 * CRITICAL: the upstream board DTS at
+	 * zephyr/boards/elan/32f967_dv/32f967_dv.dts:104 sets `use-port-a;`
+	 * because that DTS targets the default PWMB_N-on-PA3 demo. Boolean DT
+	 * properties can only be *added* by an overlay, never re-assigned to
+	 * false — so we have to explicitly delete it before the driver reads
+	 * cfg->use_port_a. Without this, pwm_em32_init() drives PA0-PA5
+	 * (PWM_S=0) and the 6 PB pins stay dark.
+	 */
+	/delete-property/ use-port-a;
+
+	/*
+	 * The board DTS also sets pinctrl-0 = <&pwmb_pa3_n>. A scalar
+	 * re-assignment from an overlay (the line below) correctly overrides
+	 * that. Likewise for output-type.
+	 */
+	pinctrl-0 = <&pwma_pb10_p &pwma_pb11_n
+		     &pwmb_pb12_p &pwmb_pb13_n
+		     &pwmc_pb14_p &pwmc_pb15_n>;
+	pinctrl-names = "default";
+
+	/*
+	 * output-type = 2 (PWM_EM32_OUTPUT_BOTH) — the driver enables both
+	 * P and N logic on every channel and sets PWM_SW1/PWM_SW2/PWM_SW3 = 1
+	 * so the N outputs route to PB11/PB13/PB15 and the P outputs (which
+	 * in this mode carry channels D/E/F) route to PB10/PB12/PB14.
+	 */
+	output-type = <2>;
+};

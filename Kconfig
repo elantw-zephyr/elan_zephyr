@@ -1,2 +1,5 @@
 rsource "drivers/Kconfig"
 
+# SoC-level additions kept in-module (avoid patching upstream Zephyr Kconfig).
+rsource "soc/elan/em32f967/Kconfig.soc"
+

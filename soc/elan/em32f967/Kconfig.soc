@@ -1,0 +1,60 @@
+# Copyright (c) 2025 Elan Microelectronics Corp.
+# SPDX-License-Identifier: Apache-2.0
+
+# Module-side SoC Kconfig additions for EM32F967.
+#
+# Keep upstream SoC description minimal and move module-specific selects here.
+
+if SOC_EM32F967
+
+config ELAN_EM32F967_HAS_PM
+	bool
+	default y
+	select HAS_PM
+	select HAS_POWEROFF
+	help
+	  Internal helper symbol.
+	  Select HAS_PM and HAS_POWEROFF when building for ELAN EM32F967 using the elan_zephyr module.
+	  HAS_POWEROFF allows CONFIG_POWEROFF=y (sys_poweroff() API), implemented by poweroff.c.
+
+endif # SOC_EM32F967
+
+config SOC_EM32F967_PM
+    bool "EM32F967 Power Management Support"
+    default y
+    help
+      Enable power management functions for ultra-low power modes
+      (140 μA deep sleep target). Requires clock gating and
+      power domain switching hardware.
+
+config SOC_EM32F967_PM_DEEP_SLEEP
+    bool "Enable Deep Sleep Mode (140 μA)"
+    depends on SOC_EM32F967_PM
+    default y
+    help
+      Enables em32f967_set_deep_sleep_config() and related functions.
+      Achieves 140 μA standby power with USB/GPIO wake-up capability.
+
+config SOC_EM32F967_PM_EXTERNAL_WAKEUP
+    bool "Enable External GPIO Wake-Up (PA15)"
+    depends on SOC_EM32F967_PM
+    default y
+    help
+      Configures PA15 for falling-edge detection to wake from
+      deep sleep. Required for interactive fingerprint mode.
+
+config SOC_EM32F967_PM_USB_WAKEUP
+    bool "Enable USB Remote Wake-Up"
+    depends on SOC_EM32F967_PM
+    default y
+    help
+      Enables USB PHY to detect host resume signaling and wake
+      the MCU from deep sleep.
+
+config SOC_EM32F967_PM_STANDBY1
+    bool "Enable Standby1 Mode (PDSW2)"
+    depends on SOC_EM32F967_PM
+    default y
+    help
+      Enables em32f967_enter_standby1() for persistent resume state.
+      Provides ~180KB of retained RAM for application state.

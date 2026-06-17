@@ -85,7 +85,6 @@ static const struct em32_ioshare_config em32_ioshare_table[] = {
 	/* SPI configurations */
 	{EM32_PORT_B, 0, 3, EM32F967_AF1, EM32_IP_SHARE_SPI1_SHIFT,
 	 0x3U << EM32_IP_SHARE_SPI1_SHIFT, 0x0U << EM32_IP_SHARE_SPI1_SHIFT, "SPI1"},
-
 	{EM32_PORT_B, 4, 7, EM32F967_AF2, EM32_IP_SHARE_SSP2_SHIFT,
 	 0x3U << EM32_IP_SHARE_SSP2_SHIFT, 0x0U << EM32_IP_SHARE_SSP2_SHIFT, "SSP2"},
 
@@ -271,11 +270,11 @@ int pinctrl_configure_pins(const pinctrl_soc_pin_t *pins, uint8_t pin_cnt, uintp
 	LOG_DBG("Configuring %d pins", pin_cnt);
 
 	for (uint8_t i = 0; i < pin_cnt; i++) {
-		uint32_t pinmux = pins[i].pinmux;
+		uint32_t pinmux  = pins[i].pinmux;
 		uint32_t pin_cfg = pins[i].pincfg;
 
-		uint8_t port = EM32_DT_GET_PORT(pinmux);
-		uint8_t pin_num = EM32_DT_GET_PIN(pinmux);
+		uint8_t  port     = EM32_DT_GET_PORT(pinmux);
+		uint8_t  pin_num  = EM32_DT_GET_PIN(pinmux);
 		uint32_t alt_func = EM32_DT_GET_FUNC(pinmux);
 
 		if (port >= EM32_MAX_PORTS) {

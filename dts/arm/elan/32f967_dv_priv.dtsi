@@ -5,6 +5,43 @@
 
 #include <zephyr/dt-bindings/clock/em32_clock_upstream.h>
 
+/*
+ * Board-specific CPU power state wiring.
+ *
+ * Per EM32F967 spec, the PWRCTRL PD_SW field selects power domain switch mode
+ * (Active/CPU/Standby1/GHM/Standby2). We expose the Zephyr PM states for
+ * PDSW1/PDSW2/PDSW4 here.
+ */
+
+&cpu0 {
+	cpu-power-states = <&cpu_pd &standby1>;
+};
+
+/ {
+	cpus {
+		power-states {
+			/* PDSW1 - CPU Power Down (suspend-to-idle) */
+			cpu_pd: cpu_pd {
+				compatible = "zephyr,power-state";
+				power-state-name = "suspend-to-idle";
+				substate-id = <1>;
+				min-residency-us = <5000>; /* 1 second */
+				exit-latency-us = <10>;
+			};
+
+			/* PDSW2 - Standby1 (standby with selective RAM retention) */
+			standby1: standby1 {
+				compatible = "zephyr,power-state";
+				power-state-name = "standby";
+				substate-id = <2>;
+				min-residency-us = <1000000>; /* 1 second */
+				exit-latency-us = <5000>;
+			};
+
+		};
+	};
+};
+
 / {
 	chosen {
 		zephyr,console = &uart1;

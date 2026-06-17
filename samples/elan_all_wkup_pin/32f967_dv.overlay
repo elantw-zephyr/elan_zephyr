@@ -1,0 +1,63 @@
+/*
+ * Copyright (c) 2026 ELAN Microelectronics Corp.
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * Overlay for the elan_all_wkup_pin sample.
+ *
+ * Declares all 7 EM32F967 external wakeup sources as gpio-keys nodes
+ * so main.c can pull them with GPIO_DT_SPEC_GET_BY_IDX() and register
+ * each one with the EM32 WakeUp controller by passing EM32_GPIO_WKUP
+ * to gpio_pin_configure_dt().
+ *
+ * Hardware-fixed mapping (drivers/gpio/gpio_em32.c :: em32_wkup_pin_table):
+ *   WKUP1 → PA6   WKUP2 → PA14  WKUP3 → PA15
+ *   WKUP4 → PB3   WKUP5 → PB7   WKUP6 → PB8   WKUP7 → PB9
+ *
+ * Every pin uses GPIO_ACTIVE_LOW so the Phase-2 activation code in
+ * em32_pwr_wkup_pin_cfg_pupd() programs the 2-bit WAKETYPE field to
+ * FALLINGEDGE (00b) — i.e. "button press pulls the pin to GND".
+ *
+ * USB is disabled because the UDC adds ~mA of standby current.
+ */
+
+#include <elan/32f967_dv_priv.dtsi>
+#include <dt-bindings/gpio/gpio.h>
+
+/ {
+	wakeup_pins {
+		compatible = "gpio-keys";
+
+		wkup1: wkup_1 {
+			gpios = <&gpioa 6  (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;
+			label = "WKUP1 - PA6";
+		};
+		wkup2: wkup_2 {
+			gpios = <&gpioa 14 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;
+			label = "WKUP2 - PA14";
+		};
+		wkup3: wkup_3 {
+			gpios = <&gpioa 15 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;
+			label = "WKUP3 - PA15";
+		};
+		wkup4: wkup_4 {
+			gpios = <&gpiob 3  (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;
+			label = "WKUP4 - PB3";
+		};
+		wkup5: wkup_5 {
+			gpios = <&gpiob 7  (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;
+			label = "WKUP5 - PB7";
+		};
+		wkup6: wkup_6 {
+			gpios = <&gpiob 8  (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;
+			label = "WKUP6 - PB8";
+		};
+		wkup7: wkup_7 {
+			gpios = <&gpiob 9  (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;
+			label = "WKUP7 - PB9";
+		};
+	};
+};
+
+&zephyr_udc0 {
+	status = "disabled";
+};

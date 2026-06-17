@@ -1,0 +1,48 @@
+/*
+ * elan_pw_saving overlay for 32f967_dv
+ *
+ * Wakeup source: PA15 (WKUP3) — rising edge (GPIO_ACTIVE_HIGH)
+ * No PA6 configuration — only PA15 is used for wakeup.
+ */
+
+#include <elan/32f967_dv_priv.dtsi>
+
+/ {
+	aliases {
+		sw0 = &button0;
+		led0 = &led0;
+	};
+
+	gpio_keys {
+		compatible = "gpio-keys";
+		status = "okay";
+
+		/* PA15 — WKUP3, rising edge wakeup
+		 * GPIO_PULL_DOWN (0x02) + GPIO_ACTIVE_HIGH (default, no flag)
+		 * EM32_GPIO_WKUP (0x0100) = wakeup source
+		 */
+		button0: button_0 {
+			gpios = <&gpioa 15 (GPIO_PULL_DOWN | GPIO_ACTIVE_HIGH)>;
+			label = "User Button PA15 (WKUP3)";
+		};
+	};
+
+	leds {
+		compatible = "gpio-leds";
+		status = "okay";
+
+		led0: led_0 {
+			gpios = <&gpiob 14 GPIO_ACTIVE_HIGH>;
+			label = "User LED (PB14)";
+		};
+	};
+};
+
+&gpioa {
+	status = "okay";
+	wakeup-source;
+};
+
+&gpiob {
+	status = "okay";
+};

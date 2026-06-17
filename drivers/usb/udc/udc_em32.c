@@ -13,6 +13,11 @@
 #include <../drivers/usb/udc/udc_common.h>
 #include "soc_usbctrl.h"
 
+#include <zephyr/pm/pm.h>
+#include <zephyr/pm/policy.h>
+#include "em32f967.h" /* TODO: remove em32f967.h */
+#include "soc_967.h" /* TODO: remove soc_967.h and elan_em32.h */
+
 #include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(udc_em32, CONFIG_UDC_DRIVER_LOG_LEVEL);
 
@@ -172,6 +177,10 @@ struct udc_em32_data {
     uint32_t is_proc_remote_wakeup;
     /* Control from ep1 to ep4 */
     struct udc_em32_usbd_ep epx_ctrl[USB_NUM_BIDIR_ENDPOINTS - 1];
+
+#if defined(CONFIG_PM)
+	uint8_t _pm_policy_locked;
+#endif
 };
 
 /* Enable clock gating to disable peripheral */
@@ -330,6 +339,114 @@ static inline void usb_em32_sw_connect()
 {
     sys_set_bit(REG_AIP_USB_PHY, AIP_USB_PHY_CTRL_RSW_Pos);
 }
+
+/*
+ * Power Management Policy Lock/Unlock
+ *
+ * When USB is suspended, unlock the policy to allow CPU low power states.
+ * When USB is active or resumed, lock the policy to prevent CPU from sleeping.
+ */
+#if 1
+void normal_toggle_pb8(uint32_t times, uint32_t delay)
+{
+    CLKGatingDisable(HCLKG_GPIOB);
+    GPIO_SetOutput(GPIOIPB, GPIO_PINSOURCE8, GPIO_PuPd_Floating);
+    //GPIO_WriteBit(GPIOIPB, GPIO_PIN_8, (BitAction)1);
+    for (int i=0; i < times; i++) {
+           GPIO_ToggleBits(GPIOIPB, GPIO_PIN_8);
+           for (int j=0; j<delay; j++) {
+                   k_busy_wait(10);
+           }
+    }
+}
+void normal_toggle_pb9(uint32_t times, uint32_t delay)
+{
+    CLKGatingDisable(HCLKG_GPIOB);
+    GPIO_SetOutput(GPIOIPB, GPIO_PINSOURCE9, GPIO_PuPd_Floating);
+    //GPIO_WriteBit(GPIOIPB, GPIO_PIN_9, (BitAction)1);
+    for (int i=0; i < times; i++) {
+           GPIO_ToggleBits(GPIOIPB, GPIO_PIN_9);
+           for (int j=0; j<delay; j++) {
+                   k_busy_wait(10);
+           }
+    }
+}
+#endif
+
+#if defined(CONFIG_PM)
+
+static void lock_pm_policy(const struct device *dev, uint8_t lock)
+{
+	struct udc_em32_data *dev_inst = udc_get_private(dev);
+	//printk("[Johnny] PM policy lock state : %s, dev_inst->_pm_policy_locked : %s\n", lock ? "TRUE" : "FALSE", dev_inst->_pm_policy_locked ? "TRUE" : "FALSE");
+
+	unsigned int irq_lock_key = arch_irq_lock();
+	if (dev_inst->_pm_policy_locked != lock) {
+		const struct pm_state_info *cpu_states;
+		uint32_t num_cpu_states = pm_state_cpu_get_all(0, &cpu_states);
+
+		if (lock) {
+			/* Prevent the CPU from entering any low power states */
+			for (uint32_t i = 0; i < num_cpu_states; i++) {
+				pm_policy_state_lock_get(
+					cpu_states[i].state,
+					PM_ALL_SUBSTATES
+				);
+			}
+			//printk("[Johnny] PM policy LOCKED - prevent sleep");
+		} else {
+			/* Allow the CPU to enter available low power states */
+			for (uint32_t i = 0; i < num_cpu_states; i++) {
+				pm_policy_state_lock_put(
+					cpu_states[i].state,
+					PM_ALL_SUBSTATES
+				);
+			}
+			//printk("[Johnny] PM policy UNLOCKED - allow sleep");
+		}
+		dev_inst->_pm_policy_locked = lock;
+	} else {
+		//printk("[Johnny] PM policy lock state unchanged: %s\n", lock ? "TRUE" : "FALSE");
+	}
+	arch_irq_unlock(irq_lock_key);
+}
+#else
+/* Stub: Do nothing if PM not enabled */
+#define lock_pm_policy(dev, lock)
+#endif
+
+/* Power management bridge for USB suspend/resume
+ * - schedule `pm_state_force()` from thread context when USB suspend occurs
+ * - notify PM subsystem on resume from ISR via `pm_system_resume()`
+ */
+#if defined(CONFIG_PM)
+static const struct pm_state_info e967_pdsw2_state = {
+	.state = PM_STATE_STANDBY,
+	.substate_id = 2,
+	.min_residency_us = 0,
+	.exit_latency_us = 0,
+};
+
+static void usb_pm_force_work_handler(struct k_work *work)
+{
+	ARG_UNUSED(work);
+	printk("Requesting PDSW2 (RTC off) (PM_STATE_STANDBY, substate-id=%d)...\n",
+		   e967_pdsw2_state.substate_id);
+
+	//if (!pm_state_force(0U, &e967_pdsw2_state)) {
+	//	printk("pm_state_force() failed; power state not available\n");
+	//}
+}
+
+K_WORK_DEFINE(usb_pm_force_work, usb_pm_force_work_handler);
+
+#define usb_pm_force_request() k_work_submit(&usb_pm_force_work)
+#define usb_pm_force_cancel()  k_work_cancel(&usb_pm_force_work)
+#else
+/* Stub: no-op when PM is not enabled */
+#define usb_pm_force_request() do { } while (0)
+#define usb_pm_force_cancel()  do { } while (0)
+#endif
 
 /* Start USB PHY and get it working. */
 static void em32_usb_boot(const struct udc_em32_data *priv)
@@ -923,6 +1040,13 @@ static int udc_em32_ctrl_in(const struct device *dev, uint8_t ep)
                  */
                 udc_set_suspended(dev, true);
                 udc_submit_event(dev, UDC_EVT_SUSPEND, 0);
+
+                /* Unlock PM policy to allow low power states */
+				//printk("[Johnny] >>> policy false - suspend isr 3\n");
+				lock_pm_policy(dev, false);
+#if defined(CONFIG_PM)
+				normal_toggle_pb8(6, 1);
+#endif
             }
 
             priv->is_proc_remote_wakeup = USB_REMOTE_WAKEUP_REQ_NOT_ISSUE;
@@ -1153,6 +1277,15 @@ static void usb_em32_suspend_isr(const struct device *dev)
     udc_set_suspended(dev, true);
     udc_submit_event(dev, UDC_EVT_SUSPEND, 0);
 
+    /* Unlock PM policy to allow low power states */
+	//printk("[Johnny] >>> policy false - suspend isr 2\n");
+	lock_pm_policy(dev, false);
+#if defined(CONFIG_PM)
+	normal_toggle_pb8(4, 1);
+#endif
+	/* schedule PM bridge in thread context to request PDSW2 */
+	usb_pm_force_request();
+
     return;
 }
 static void usb_em32_resume_isr(const struct device *dev)
@@ -1171,6 +1304,16 @@ static void usb_em32_resume_isr(const struct device *dev)
     if (sys_test_bit(REG_USB_INT_STA, REG_USB_INT_STA_RESUME_INT_SF_Pos)) {
         udc_set_suspended(dev, false);
         udc_submit_event(dev, UDC_EVT_RESUME, 0);
+
+		/* Lock PM policy to prevent CPU from sleeping during activity */
+		//printk("[Johnny] >>> policy true - resume isr 1\n");
+		lock_pm_policy(dev, true);
+#if defined(CONFIG_PM)
+		normal_toggle_pb9(2, 1);
+#endif
+		/* cancel any pending PDSW2 request and notify PM core about resume */
+		usb_pm_force_cancel();
+		pm_system_resume();
 
         em32_set_remote_wakeup_handler(dev, 0);
         sys_set_bit(REG_USB_INT_STA, REG_USB_INT_STA_RESUME_INT_SF_CLR_Pos);
@@ -1687,12 +1830,30 @@ static int udc_em32_set_address(const struct device *dev, const uint8_t address)
 static int udc_em32_enable(const struct device *dev)
 {
     usb_em32_sw_connect();
+
+	/* Lock PM policy to prevent CPU from sleeping during activity */
+	//printk("[Johnny] >>> policy true - enable\n");
+	lock_pm_policy(dev, true);
+#if defined(CONFIG_PM)
+	printk("[Johnny] >>> policy false - enable\n");
+	normal_toggle_pb9(20, 1);
+#endif
+
     return 0;
 }
 
 static int udc_em32_disable(const struct device *dev)
 {
     usb_em32_sw_disconnect();
+
+	/* Unlock PM policy to allow low power states */
+	//printk("[Johnny] >>> policy false - disable\n");
+	lock_pm_policy(dev, false);
+#if defined(CONFIG_PM)
+	printk("[Johnny] >>> policy false - disable\n");
+	normal_toggle_pb8(20, 1);
+#endif
+
     return 0;
 }
 
@@ -1756,6 +1917,12 @@ static int udc_em32_init(const struct device *dev)
     if (udc_ep_enable_internal(dev, USB_CONTROL_EP_IN, USB_EP_TYPE_CONTROL, 8, 0)) {
         return -EIO;
     }
+
+#if defined(CONFIG_PM)
+	printk("[Johnny] >>> init\n");
+	normal_toggle_pb8(100, 1);
+	normal_toggle_pb9(100, 1);
+#endif
 
     return 0;
 }
