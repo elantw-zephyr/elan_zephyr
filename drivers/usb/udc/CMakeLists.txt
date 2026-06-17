@@ -22,4 +22,4 @@
 #zephyr_library_sources_ifdef(CONFIG_UDC_RENESAS_RA udc_renesas_ra.c)
 #zephyr_library_sources_ifdef(CONFIG_UDC_MAX32 udc_max32.c)
 #zephyr_library_sources_ifdef(CONFIG_UDC_SAM0 udc_sam0.c)
-zephyr_library_sources_ifdef(CONFIG_UDC_ELAN_ELANDEV udc_elan_elandev.c)
+zephyr_library_sources_ifdef(CONFIG_UDC_ELAN_EM32 udc_em32.c)

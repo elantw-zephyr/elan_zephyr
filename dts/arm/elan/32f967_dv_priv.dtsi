@@ -84,6 +84,7 @@
 };
 
 &zephyr_udc0 {
+	compatible = "elan,em32-usbd";
 	status = "okay";
 };
 
