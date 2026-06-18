@@ -28,7 +28,6 @@
 #include "soc_967.h"
 #include "soc_pm.h"
 #include "em32f967.h"
-#include "../../../drivers/usb/udc/udc_e967.h"
 
 LOG_MODULE_REGISTER(pm_em32, CONFIG_PM_LOG_LEVEL);
 
