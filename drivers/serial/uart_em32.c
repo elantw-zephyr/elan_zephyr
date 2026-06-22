@@ -12,9 +12,6 @@
 #include <zephyr/drivers/pinctrl.h>
 #include <soc.h>
 
-//#include <zephyr/pm/pm.h>
-//#include <zephyr/pm/policy.h>
-
 #define UART_STATE_TX_BUSY_MASK        BIT(0)
 #define UART_STATE_RX_RDY_MASK         BIT(1)
 #define UART_STATE_RX_BUF_OVERRUN_MASK BIT(3)
@@ -138,11 +135,6 @@ static int uart_em32_init(const struct device *dev)
 	uart_em32_write(dev, UART_INTSTACLR_OFFSET, 0xF);
 	uart_em32_write(dev, UART_CTRL_OFFSET, 0x3);
 
-	//const struct pm_state_info *states;
-	//uint8_t count = pm_state_cpu_get_all(0, &states);
-	//for (int i = 0; i < count; i++) {
-	//	pm_policy_state_lock_get(states[i].state, PM_ALL_SUBSTATES);
-	//}
 	return 0;
 }
 

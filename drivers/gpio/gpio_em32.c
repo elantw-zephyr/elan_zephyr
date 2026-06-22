@@ -12,7 +12,6 @@
 #include <zephyr/drivers/gpio/gpio_utils.h>
 #include <zephyr/drivers/clock_control.h>
 #include <zephyr/dt-bindings/gpio/gpio.h>
-#include <zephyr/dt-bindings/gpio/em32-gpio.h>
 #include <zephyr/irq.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/sys/util.h>
@@ -389,16 +388,12 @@ static void gpio_em32_isr(const struct device *dev)
 /**
  * @brief Read back the current pin configuration (Phase 3)
  *
-=======
- * Reconstructs Zephyr GPIO flags from the hardware registers.  Only the
- * direction, pull, and open-drain state are readable; output-init and
- * drive-strength flags are write-only and cannot be recovered.
- *
+ * @param dev   GPIO port device
+ * @param pin   Pin number (0-15)
+ * @param flags Output: Zephyr GPIO flags representing current HW state
+ * @return 0 on success, -EINVAL for invalid pin
+ */
 static int gpio_em32_pin_get_config(const struct device *dev, gpio_pin_t pin, gpio_flags_t *flags)
-=======
-static int gpio_em32_pin_get_config(const struct device *dev, gpio_pin_t pin,
-				    gpio_flags_t *flags)
->>>>>>> merge/90032u-0518
 {
 	const struct gpio_em32_config *config = dev->config;
 	gpio_flags_t result = 0;
@@ -451,7 +446,7 @@ static int gpio_em32_pin_get_config(const struct device *dev, gpio_pin_t pin,
 #endif /* CONFIG_GPIO_GET_CONFIG */
 
 /* GPIO driver API (EM32-style) */
-static const struct gpio_driver_api gpio_em32_driver_api = {
+static DEVICE_API(gpio, gpio_em32_driver_api) = {
 	.pin_configure = gpio_em32_pin_configure,
 #ifdef CONFIG_GPIO_GET_CONFIG
 	.pin_get_config = gpio_em32_pin_get_config,
