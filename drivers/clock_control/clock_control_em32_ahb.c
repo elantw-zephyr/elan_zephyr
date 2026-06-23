@@ -115,6 +115,8 @@ static inline void ahb_em32_write_field(mm_reg_t base, uint32_t offset, uint32_t
 {
 	uint32_t reg;
 
+	__ASSERT(mask != 0U, "mask must not be zero");
+
 	/* Optional: check value range */
 	if ((value << __builtin_ctz(mask)) & ~mask) {
 		LOG_ERR("Value 0x%x exceeds field mask 0x%x", value, mask);
