@@ -5,6 +5,7 @@
  */
 
 #include <zephyr/init.h>
+#include <zephyr/kernel.h>
 #include <zephyr/drivers/pinctrl.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/devicetree.h>
@@ -14,6 +15,8 @@
 #include <soc.h>
 
 LOG_MODULE_REGISTER(pinctrl_em32);
+
+static struct k_spinlock em32_pinctrl_lock;
 
 #define PINMUX_IO1_VALID_BIT 8U
 #define PINMUX_IO1_SHIFT_POS 9U
@@ -117,11 +120,16 @@ static bool em32_apply_ioshare_from_pinmux(uint32_t pinmux)
 		uint32_t width = ((pinmux >> PINMUX_IO1_WIDTH_POS) & 0x3U) + 1U;
 		uint32_t val = (pinmux >> PINMUX_IO1_VAL_POS) & 0xFU;
 		uint32_t mask = ((1U << width) - 1U) << shift;
-		uint32_t reg = sys_read32((uint32_t)(em32_sysctrl_base + EM32_IOSHARE_OFFSET));
 
-		reg = (reg & ~mask) | ((val << shift) & mask);
-		sys_write32(reg, (uint32_t)(em32_sysctrl_base + EM32_IOSHARE_OFFSET));
-		LOG_DBG("IOShare op1: shift=%d width=%d val=%d reg=0x%08X", shift, width, val, reg);
+		K_SPINLOCK(&em32_pinctrl_lock) {
+			uint32_t reg =
+				sys_read32((uint32_t)(em32_sysctrl_base + EM32_IOSHARE_OFFSET));
+
+			reg = (reg & ~mask) | ((val << shift) & mask);
+			sys_write32(reg, (uint32_t)(em32_sysctrl_base + EM32_IOSHARE_OFFSET));
+			LOG_DBG("IOShare op1: shift=%d width=%d val=%d reg=0x%08X", shift, width,
+				val, reg);
+		}
 		applied = true;
 	}
 
@@ -130,11 +138,16 @@ static bool em32_apply_ioshare_from_pinmux(uint32_t pinmux)
 		uint32_t width = ((pinmux >> PINMUX_IO2_WIDTH_POS) & 0x3U) + 1U;
 		uint32_t val = (pinmux >> PINMUX_IO2_VAL_POS) & 0xFU;
 		uint32_t mask = ((1U << width) - 1U) << shift;
-		uint32_t reg = sys_read32((uint32_t)(em32_sysctrl_base + EM32_IOSHARE_OFFSET));
 
-		reg = (reg & ~mask) | ((val << shift) & mask);
-		sys_write32(reg, (uint32_t)(em32_sysctrl_base + EM32_IOSHARE_OFFSET));
-		LOG_DBG("IOShare op2: shift=%d width=%d val=%d reg=0x%08X", shift, width, val, reg);
+		K_SPINLOCK(&em32_pinctrl_lock) {
+			uint32_t reg =
+				sys_read32((uint32_t)(em32_sysctrl_base + EM32_IOSHARE_OFFSET));
+
+			reg = (reg & ~mask) | ((val << shift) & mask);
+			sys_write32(reg, (uint32_t)(em32_sysctrl_base + EM32_IOSHARE_OFFSET));
+			LOG_DBG("IOShare op2: shift=%d width=%d val=%d reg=0x%08X", shift, width,
+				val, reg);
+		}
 		applied = true;
 	}
 
@@ -157,12 +170,14 @@ static int em32_configure_ioshare(uint8_t port, uint8_t pin_num, uint32_t alt_fu
 		if (cfg->port == port && pin_num >= cfg->pin_start && pin_num <= cfg->pin_end &&
 		    cfg->alt_func == alt_func) {
 
-			ioshare_val =
-				sys_read32((uint32_t)(em32_sysctrl_base + EM32_IOSHARE_OFFSET));
-			ioshare_val &= ~cfg->bit_mask;
-			ioshare_val |= cfg->bit_value;
-			sys_write32(ioshare_val,
-				    (uint32_t)(em32_sysctrl_base + EM32_IOSHARE_OFFSET));
+			K_SPINLOCK(&em32_pinctrl_lock) {
+				ioshare_val = sys_read32(
+					(uint32_t)(em32_sysctrl_base + EM32_IOSHARE_OFFSET));
+				ioshare_val &= ~cfg->bit_mask;
+				ioshare_val |= cfg->bit_value;
+				sys_write32(ioshare_val,
+					    (uint32_t)(em32_sysctrl_base + EM32_IOSHARE_OFFSET));
+			}
 
 			LOG_DBG("Configured %s on P%c%d (IOShare: 0x%08X)", cfg->peripheral,
 				'A' + port, pin_num, ioshare_val);
@@ -197,10 +212,13 @@ static void em32_pinctrl_set_mux(uint8_t port, uint8_t pin, uint8_t mux)
 	}
 
 	uint32_t addr = (uint32_t)(em32_sysctrl_base + offset);
-	uint32_t val = sys_read32(addr);
 
-	val = (val & ~mask) | (((uint32_t)mux & 0xFU) << shift);
-	sys_write32(val, addr);
+	K_SPINLOCK(&em32_pinctrl_lock) {
+		uint32_t val = sys_read32(addr);
+
+		val = (val & ~mask) | (((uint32_t)mux & 0xFU) << shift);
+		sys_write32(val, addr);
+	}
 }
 
 static void em32_pinctrl_set_altfunc(uint8_t port, uint8_t pin, uint8_t mux)
@@ -225,21 +243,27 @@ static void em32_pinctrl_set_pull(uint8_t port, uint8_t pin, uint32_t pupd)
 	uint32_t addr = (uint32_t)(em32_sysctrl_base + offset);
 	uint32_t shift = (uint32_t)pin * 2U;
 	uint32_t mask = 0x3U << shift;
-	uint32_t val = sys_read32(addr);
 
-	val = (val & ~mask) | ((pupd & 0x3U) << shift);
-	sys_write32(val, addr);
+	K_SPINLOCK(&em32_pinctrl_lock) {
+		uint32_t val = sys_read32(addr);
+
+		val = (val & ~mask) | ((pupd & 0x3U) << shift);
+		sys_write32(val, addr);
+	}
 }
 
 static void em32_pinctrl_set_open_drain(uint8_t port, uint8_t pin, bool od)
 {
 	uint32_t offset = (port == EM32_PORT_A) ? EM32_IOODEPACTRL_OFFSET : EM32_IOODEPBCTRL_OFFSET;
 	uint32_t addr = (uint32_t)(em32_sysctrl_base + offset);
-	uint32_t val = sys_read32(addr);
 
-	/* WRITE_BIT() takes a bit position, not a mask */
-	WRITE_BIT(val, pin, od);
-	sys_write32(val, addr);
+	K_SPINLOCK(&em32_pinctrl_lock) {
+		uint32_t val = sys_read32(addr);
+
+		/* WRITE_BIT() takes a bit position, not a mask */
+		WRITE_BIT(val, pin, od);
+		sys_write32(val, addr);
+	}
 }
 
 static void em32_pinctrl_set_drive(uint8_t port, uint8_t pin, bool high_drive)
@@ -247,11 +271,14 @@ static void em32_pinctrl_set_drive(uint8_t port, uint8_t pin, bool high_drive)
 	uint32_t offset =
 		(port == EM32_PORT_A) ? EM32_IO_HD_PA_CTRL_OFFSET : EM32_IO_HD_PB_CTRL_OFFSET;
 	uint32_t addr = (uint32_t)(em32_sysctrl_base + offset);
-	uint32_t val = sys_read32(addr);
 
-	/* WRITE_BIT() takes a bit position, not a mask */
-	WRITE_BIT(val, pin, high_drive);
-	sys_write32(val, addr);
+	K_SPINLOCK(&em32_pinctrl_lock) {
+		uint32_t val = sys_read32(addr);
+
+		/* WRITE_BIT() takes a bit position, not a mask */
+		WRITE_BIT(val, pin, high_drive);
+		sys_write32(val, addr);
+	}
 }
 
 int pinctrl_configure_pins(const pinctrl_soc_pin_t *pins, uint8_t pin_cnt, uintptr_t reg)
@@ -312,23 +339,3 @@ int pinctrl_configure_pins(const pinctrl_soc_pin_t *pins, uint8_t pin_cnt, uintp
 	LOG_DBG("Configured %d pins OK", pin_cnt);
 	return 0;
 }
-
-static int em32_pinctrl_driver_init(void)
-{
-	uint32_t ioshare_val;
-
-	ioshare_val = sys_read32((uint32_t)(em32_sysctrl_base + EM32_IOSHARE_OFFSET));
-	LOG_DBG("Initial IOShare register: 0x%08X", ioshare_val);
-
-	/* SSP2 on PB4-PB7 for SPI functionality */
-	ioshare_val &= ~(0x3U << EM32_IP_SHARE_SSP2_SHIFT);
-	ioshare_val |= (0x0U << EM32_IP_SHARE_SSP2_SHIFT);
-
-	sys_write32(ioshare_val, (uint32_t)(em32_sysctrl_base + EM32_IOSHARE_OFFSET));
-
-	LOG_DBG("EM32F967 pinctrl driver initialized (IOShare: 0x%08X)", ioshare_val);
-
-	return 0;
-}
-
-SYS_INIT(em32_pinctrl_driver_init, PRE_KERNEL_1, CONFIG_PINCTRL_EM32_INIT_PRIORITY);

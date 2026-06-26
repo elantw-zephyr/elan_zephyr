@@ -44,8 +44,9 @@ typedef struct pinctrl_soc_pin {
  * These definitions are compatible with the EM32F967 pinctrl system
  */
 #define EM32_NO_PULL     0x0
-#define EM32_PULL_UP     0x1
-#define EM32_PULL_DOWN   0x3
+#define EM32_PULL_UP     0x1 /* PU0 - weak pull-up */
+#define EM32_PULL_UP1    0x2 /* PU1 - strong pull-up */
+#define EM32_PULL_DOWN   0x3 /* PD  - pull-down */
 #define EM32_PUSH_PULL   0x0
 #define EM32_OPEN_DRAIN  0x1
 #define EM32_OUTPUT_LOW  0x0

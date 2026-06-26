@@ -11,10 +11,3 @@ config PINCTRL_EM32
 	  Enable pin control driver for EM32F967 SoC.
 	  This driver provides pin multiplexing and configuration
 	  support for GPIO, UART, SPI, I2C, and PWM functions.
-
-config PINCTRL_EM32_INIT_PRIORITY
-	int "EM32 pinctrl init priority"
-	default 45
-	depends on PINCTRL_EM32
-	help
-	  Initialization priority for EM32 pinctrl driver.

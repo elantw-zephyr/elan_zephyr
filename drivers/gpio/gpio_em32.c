@@ -21,7 +21,6 @@
 
 #include <cmsis_core.h>
 #include <soc.h>
-#include "gpio_em32.h"
 
 LOG_MODULE_REGISTER(gpio_em32, CONFIG_GPIO_LOG_LEVEL);
 
@@ -83,11 +82,16 @@ struct gpio_em32_data {
 	sys_slist_t callbacks;
 	/* Clock tracking for power management */
 	uint32_t pin_has_clock_enabled;
+	/* Guards read-modify-write of DATAOUT and the shared sysctrl pull/OD
+	 * registers against preemption, ISRs and (on SMP) other cores.
+	 */
+	struct k_spinlock lock;
 };
 
-static int em32_gpio_configure_pull(const struct gpio_em32_config *config, uint32_t pin,
-				    uint32_t pull)
+static int em32_gpio_configure_pull(const struct device *dev, uint32_t pin, uint32_t pull)
 {
+	const struct gpio_em32_config *config = dev->config;
+	struct gpio_em32_data *data = dev->data;
 	uint32_t reg_addr;
 	uint32_t shift;
 	uint32_t mask;
@@ -98,17 +102,20 @@ static int em32_gpio_configure_pull(const struct gpio_em32_config *config, uint3
 	shift = pin * 2; /* 2 bits per pin */
 	mask = 0x3 << shift;
 
-	reg_val = sys_read32(reg_addr);
-	reg_val = (reg_val & ~mask) | ((pull & 0x3) << shift);
-	sys_write32(reg_val, reg_addr);
+	K_SPINLOCK(&data->lock) {
+		reg_val = sys_read32(reg_addr);
+		reg_val = (reg_val & ~mask) | ((pull & 0x3) << shift);
+		sys_write32(reg_val, reg_addr);
+	}
 
 	LOG_DBG("Configured P%c%d pull to %d", (config->port == 0) ? 'A' : 'B', pin, pull);
 	return 0;
 }
 
-static int em32_gpio_configure_open_drain(const struct gpio_em32_config *config, uint32_t pin,
-					  bool open_drain)
+static int em32_gpio_configure_open_drain(const struct device *dev, uint32_t pin, bool open_drain)
 {
+	const struct gpio_em32_config *config = dev->config;
+	struct gpio_em32_data *data = dev->data;
 	uint32_t reg_addr;
 	uint32_t pin_mask;
 	uint32_t reg_val;
@@ -117,13 +124,15 @@ static int em32_gpio_configure_open_drain(const struct gpio_em32_config *config,
 		   ((config->port == 0) ? EM32_IOODEPACTRL_OFFSET : EM32_IOODEPBCTRL_OFFSET);
 	pin_mask = BIT(pin);
 
-	reg_val = sys_read32(reg_addr);
-	if (open_drain) {
-		reg_val |= pin_mask;
-	} else {
-		reg_val &= ~pin_mask;
+	K_SPINLOCK(&data->lock) {
+		reg_val = sys_read32(reg_addr);
+		if (open_drain) {
+			reg_val |= pin_mask;
+		} else {
+			reg_val &= ~pin_mask;
+		}
+		sys_write32(reg_val, reg_addr);
 	}
-	sys_write32(reg_val, reg_addr);
 
 	LOG_DBG("Configured P%c%d open drain: %s", (config->port == 0) ? 'A' : 'B', pin,
 		open_drain ? "enabled" : "disabled");
@@ -186,16 +195,16 @@ static int gpio_em32_pin_configure(const struct device *dev, gpio_pin_t pin, gpi
 		 * preemption/ISR races on other pins of the same port.
 		 */
 		if (flags & (GPIO_OUTPUT_INIT_HIGH | GPIO_OUTPUT_INIT_LOW)) {
-			unsigned int key = irq_lock();
-			uint32_t dout = em32_gpio_read(dev, GPIO_DATAOUT_OFFSET);
+			K_SPINLOCK(&data->lock) {
+				uint32_t dout = em32_gpio_read(dev, GPIO_DATAOUT_OFFSET);
 
-			if (flags & GPIO_OUTPUT_INIT_HIGH) {
-				dout |= pin_mask;
-			} else {
-				dout &= ~pin_mask;
+				if (flags & GPIO_OUTPUT_INIT_HIGH) {
+					dout |= pin_mask;
+				} else {
+					dout &= ~pin_mask;
+				}
+				em32_gpio_write(dev, GPIO_DATAOUT_OFFSET, dout);
 			}
-			em32_gpio_write(dev, GPIO_DATAOUT_OFFSET, dout);
-			irq_unlock(key);
 		}
 	} else {
 		/* Disable the output driver (input mode). */
@@ -210,12 +219,12 @@ static int gpio_em32_pin_configure(const struct device *dev, gpio_pin_t pin, gpi
 	} else if (flags & GPIO_PULL_DOWN) {
 		pupd = EM32_GPIO_PUPD_PULLDOWN;
 	}
-	ret = em32_gpio_configure_pull(config, pin, pupd);
+	ret = em32_gpio_configure_pull(dev, pin, pupd);
 	if (ret < 0) {
 		goto out;
 	}
 
-	ret = em32_gpio_configure_open_drain(config, pin, (flags & GPIO_OPEN_DRAIN) != 0U);
+	ret = em32_gpio_configure_open_drain(dev, pin, (flags & GPIO_OPEN_DRAIN) != 0U);
 
 out:
 #ifdef CONFIG_PM_DEVICE_RUNTIME
@@ -234,53 +243,61 @@ static int gpio_em32_port_get_raw(const struct device *dev, uint32_t *value)
  * The EM32 GPIO block has no atomic data set/clear register: output data lives
  * only in DATAOUT. (Offsets 0x10/0x14 are OUTENSET/OUTENCLR — output-enable, not
  * data.) Every output update is therefore a read-modify-write on DATAOUT, guarded
- * with irq_lock() so a preemption or ISR touching another pin of the same port
- * cannot lose an update.
+ * with a per-port spinlock so a preemption, ISR or another core touching another
+ * pin of the same port cannot lose an update.
  */
 static int gpio_em32_port_set_masked_raw(const struct device *dev, uint32_t mask, uint32_t value)
 {
-	unsigned int key = irq_lock();
-	uint32_t dout = em32_gpio_read(dev, GPIO_DATAOUT_OFFSET);
+	struct gpio_em32_data *data = dev->data;
 
-	dout = (dout & ~mask) | (value & mask);
-	em32_gpio_write(dev, GPIO_DATAOUT_OFFSET, dout);
-	irq_unlock(key);
+	K_SPINLOCK(&data->lock) {
+		uint32_t dout = em32_gpio_read(dev, GPIO_DATAOUT_OFFSET);
+
+		dout = (dout & ~mask) | (value & mask);
+		em32_gpio_write(dev, GPIO_DATAOUT_OFFSET, dout);
+	}
 
 	return 0;
 }
 
 static int gpio_em32_port_set_bits_raw(const struct device *dev, uint32_t pins)
 {
-	unsigned int key = irq_lock();
-	uint32_t dout = em32_gpio_read(dev, GPIO_DATAOUT_OFFSET);
+	struct gpio_em32_data *data = dev->data;
 
-	dout |= pins;
-	em32_gpio_write(dev, GPIO_DATAOUT_OFFSET, dout);
-	irq_unlock(key);
+	K_SPINLOCK(&data->lock) {
+		uint32_t dout = em32_gpio_read(dev, GPIO_DATAOUT_OFFSET);
+
+		dout |= pins;
+		em32_gpio_write(dev, GPIO_DATAOUT_OFFSET, dout);
+	}
 
 	return 0;
 }
 
 static int gpio_em32_port_clear_bits_raw(const struct device *dev, uint32_t pins)
 {
-	unsigned int key = irq_lock();
-	uint32_t dout = em32_gpio_read(dev, GPIO_DATAOUT_OFFSET);
+	struct gpio_em32_data *data = dev->data;
 
-	dout &= ~pins;
-	em32_gpio_write(dev, GPIO_DATAOUT_OFFSET, dout);
-	irq_unlock(key);
+	K_SPINLOCK(&data->lock) {
+		uint32_t dout = em32_gpio_read(dev, GPIO_DATAOUT_OFFSET);
+
+		dout &= ~pins;
+		em32_gpio_write(dev, GPIO_DATAOUT_OFFSET, dout);
+	}
 
 	return 0;
 }
 
 static int gpio_em32_port_toggle_bits(const struct device *dev, uint32_t pins)
 {
-	unsigned int key = irq_lock();
-	uint32_t dout = em32_gpio_read(dev, GPIO_DATAOUT_OFFSET);
+	struct gpio_em32_data *data = dev->data;
 
-	dout ^= pins;
-	em32_gpio_write(dev, GPIO_DATAOUT_OFFSET, dout);
-	irq_unlock(key);
+	K_SPINLOCK(&data->lock) {
+		uint32_t dout = em32_gpio_read(dev, GPIO_DATAOUT_OFFSET);
+
+		dout ^= pins;
+		em32_gpio_write(dev, GPIO_DATAOUT_OFFSET, dout);
+	}
 
 	return 0;
 }
