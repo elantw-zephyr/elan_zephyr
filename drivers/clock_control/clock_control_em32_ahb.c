@@ -19,6 +19,7 @@ LOG_MODULE_REGISTER(em32_ahb, CONFIG_LOG_DEFAULT_LEVEL);
 #include <soc_sysctrl.h>
 
 #define DWT_UNLOCK_KEY 0xC5ACCE55U
+#define EM32_GATE_MAX  63U
 
 struct elan_em32_ahb_clock_control_config {
 	mm_reg_t sysctrl_base;
@@ -32,7 +33,7 @@ struct elan_em32_ahb_clock_control_config {
 /*
  * Configurations
  */
-static uint32_t ahb_count = 12000; /* 12M Hz */
+static uint32_t ahb_count_khz = 12000;
 static bool g_dwt_ok;
 
 static inline void early_delay_us(uint32_t us)
@@ -45,7 +46,7 @@ static inline void early_delay_us(uint32_t us)
 		 * equivalent) to be in sync with the active clock configuration.
 		 * Accuracy depends on that value being correct.
 		 */
-		uint64_t hz = ahb_count * 1000;
+		uint64_t hz = (uint64_t)ahb_count_khz * 1000U;
 		uint32_t cycles = (uint32_t)((hz * us) / 1000000ULL);
 		uint32_t start = DWT->CYCCNT;
 
@@ -59,7 +60,8 @@ static inline void early_delay_us(uint32_t us)
 		 * Intended only to add a tiny gap between back-to-back register
 		 * writes when DWT is unavailable. This is not an accurate µs delay.
 		 */
-		for (uint32_t i = 0; i < (ahb_count / 1000) * (us / 10u ? us / 10u : 1u); i++) {
+		for (uint32_t i = 0; i < (ahb_count_khz / 1000U) * (us / 10U ? us / 10U : 1U);
+		     i++) {
 			arch_nop();
 		}
 	}
@@ -101,7 +103,7 @@ static inline void delay_us(uint32_t us)
 	delay_us_impl(us);
 }
 
-static inline uint32_t ahb_em32_read_field(uint32_t base, uint32_t offset, uint32_t mask)
+static inline uint32_t ahb_em32_read_field(mm_reg_t base, uint32_t offset, uint32_t mask)
 {
 	uint32_t reg;
 
@@ -143,7 +145,7 @@ static inline bool em32_gate_is_all(uint32_t gate_idx)
 static inline bool em32_gate_is_valid(uint32_t gate_idx)
 {
 	/* Valid when in [0..63] or the ALL marker is used. */
-	return (gate_idx <= 63u) || em32_gate_is_all(gate_idx);
+	return (gate_idx <= EM32_GATE_MAX) || em32_gate_is_all(gate_idx);
 }
 
 /*
@@ -190,37 +192,37 @@ static int elan_em32_get_ahb_freq(const struct device *dev, uint32_t *freq)
 	const struct elan_em32_ahb_clock_control_config *config = dev->config;
 	mm_reg_t sysctrl_base = config->sysctrl_base;
 	mm_reg_t clkctrl_base = config->clkctrl_base;
-	uint32_t irc_freq;
-	uint32_t irc_pll_freq;
-	uint32_t main_freq;
-	uint32_t ahb_freq;
+	uint32_t irc_freq_khz;
+	uint32_t irc_pll_freq_khz;
+	uint32_t main_freq_khz;
+	uint32_t ahb_freq_khz;
 
 	uint32_t mirc_rcm =
 		ahb_em32_read_field(clkctrl_base, CLKCTRL_MIRC_CTRL_OFF, CLKCTRL_MIRC_RCM_MASK);
 	switch (mirc_rcm) {
 	case 0x00:
-		irc_freq = 12000;
-		irc_pll_freq = 12000 * 16 / 2;
+		irc_freq_khz = 12000;
+		irc_pll_freq_khz = 12000 * 16 / 2;
 		break; /* 12M/120M */
 	case 0x01:
-		irc_freq = 16000;
-		irc_pll_freq = 16000 * 16 / 4;
+		irc_freq_khz = 16000;
+		irc_pll_freq_khz = 16000 * 16 / 4;
 		break; /* 16M/80M */
 	case 0x02:
-		irc_freq = 20000;
-		irc_pll_freq = 20000 * 16 / 4;
+		irc_freq_khz = 20000;
+		irc_pll_freq_khz = 20000 * 16 / 4;
 		break; /* 20M/100M */
 	case 0x03:
-		irc_freq = 24000;
-		irc_pll_freq = 24000 * 16 / 4;
+		irc_freq_khz = 24000;
+		irc_pll_freq_khz = 24000 * 16 / 4;
 		break; /* 24M/120M */
 	case 0x04:
-		irc_freq = 28000;
-		irc_pll_freq = 28000 * 16 / 6;
+		irc_freq_khz = 28000;
+		irc_pll_freq_khz = 28000 * 16 / 6;
 		break; /* 28M/93M*/
 	case 0x05:
-		irc_freq = 32000;
-		irc_pll_freq = 32000 * 16 / 6;
+		irc_freq_khz = 32000;
+		irc_pll_freq_khz = 32000 * 16 / 6;
 		break; /* 32M/107M */
 	default:
 		LOG_ERR("Unsupported MIRC_RCM value %u", mirc_rcm);
@@ -231,35 +233,35 @@ static int elan_em32_get_ahb_freq(const struct device *dev, uint32_t *freq)
 		ahb_em32_read_field(sysctrl_base, SYSCTRL_SYS_REG_CTRL_OFF, SYSCTRL_HCLK_SEL_MASK);
 	switch (hclk_sel) {
 	case 0x00:
-		main_freq = irc_freq;
+		main_freq_khz = irc_freq_khz;
 		break;
 
 	case 0x01: {
 		uint32_t xtal_hirc_sel = ahb_em32_read_field(sysctrl_base, SYSCTRL_SYS_REG_CTRL_OFF,
 							     SYSCTRL_XTAL_HIRC_SEL);
 		if (xtal_hirc_sel) {
-			main_freq = 24000 * 5;
+			main_freq_khz = 24000 * 5;
 		} else {
-			main_freq = irc_pll_freq;
+			main_freq_khz = irc_pll_freq_khz;
 		}
 		break;
 	}
 
 	case 0x02:
-		main_freq = 0xffffffffU;
+		main_freq_khz = 0xffffffffU;
 		break;
 
 	default:
-		main_freq = 0;
+		main_freq_khz = 0;
 		break;
 	}
 
 	uint32_t hclk_div =
 		ahb_em32_read_field(sysctrl_base, SYSCTRL_SYS_REG_CTRL_OFF, SYSCTRL_HCLK_DIV_MASK);
-	main_freq = main_freq >> hclk_div;
-	ahb_freq = main_freq;
+	main_freq_khz = main_freq_khz >> hclk_div;
+	ahb_freq_khz = main_freq_khz;
 
-	*freq = ahb_freq;
+	*freq = ahb_freq_khz;
 	return 0;
 }
 
@@ -459,7 +461,7 @@ static int elan_em32_set_ahb_freq(const struct device *dev)
 	ahb_em32_write_field(sysctrl_base, SYSCTRL_SYS_REG_CTRL_OFF, SYSCTRL_HCLK_DIV_MASK,
 			     pre_div);
 
-	ret = elan_em32_get_ahb_freq(dev, &ahb_count);
+	ret = elan_em32_get_ahb_freq(dev, &ahb_count_khz);
 	if (ret) {
 		return ret;
 	}
@@ -523,6 +525,8 @@ static int elan_em32_ahb_clock_control_off(const struct device *dev, clock_contr
 static int elan_em32_ahb_clock_control_get_rate(const struct device *dev,
 						clock_control_subsys_t sys, uint32_t *rate)
 {
+	ARG_UNUSED(sys);
+
 	/* elan_em32_get_ahb_freq(dev) returns kHz; convert to Hz. */
 	uint32_t ahb_khz;
 	int ret;
@@ -532,7 +536,7 @@ static int elan_em32_ahb_clock_control_get_rate(const struct device *dev,
 		return ret;
 	}
 
-	*rate = ahb_khz * 1000u;
+	*rate = ahb_khz * 1000U;
 
 	return 0;
 }
