@@ -1,0 +1,30 @@
+sample:
+  name: ELAN EM32F967 HP Gaston Merged Example
+  description: >
+    Merged demo for the EM32F967 32f967_dv board combining three samples:
+    PA14 output / PB8+PA15 input with SPI2 loopback, PWMB_N on PA3 with
+    high-drive set via DTS, and PB3 input (PU1) / PB9 output (high-drive).
+common:
+  tags:
+    - gpio
+    - pinctrl
+    - spi
+    - pwm
+    - elan
+    - em32f967
+  integration_platforms:
+    - 32f967_dv
+  harness: console
+  harness_config:
+    type: multi_line
+    regex:
+      - "EM32F967 HP Gaston merged sample"
+tests:
+  sample.elan.hp_gaston:
+    depends_on:
+      - gpio
+      - pinctrl
+      - spi
+      - pwm
+    platform_allow:
+      - 32f967_dv

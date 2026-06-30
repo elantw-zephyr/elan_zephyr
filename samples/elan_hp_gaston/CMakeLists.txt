@@ -10,6 +10,6 @@ message(STATUS "Include compat_overlays.cmake!")
 include(${ZEPHYR_EXTRA_MODULES}/cmake/compat_overlays.cmake)
 
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
-project(elan_pwm_pa3_hd_sample)
+project(elan_hp_gaston)
 
 target_sources(app PRIVATE src/main.c)

@@ -1,0 +1,69 @@
+/*
+ * Copyright (c) 2026 ELAN Microelectronics Corp.
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * EM32F967 HP Gaston merged overlay (32f967_dv).
+ *
+ * Merges three samples:
+ *   1. elan_pa14o_pb8i_pa15i (+ SPI2 loopback PB4-PB7)
+ *   2. elan_pwm_pa3_hd (PWMB_N on PA3, high-drive via DTS)
+ *   3. elan_pb3i_pb9o (PB3 input PU1, PB9 output high-drive)
+ */
+#include <zephyr/dt-bindings/pinctrl/em32f967-pinctrl.h>
+#include <elan/32f967_dv_priv.dtsi>
+
+&pinctrl {
+	/* PB3: GPIO function, strong pull-up (PU1), low drive strength. */
+	pb3_gpio_in_pu1: pb3_gpio_in_pu1 {
+		pinmux = <EM32F967_PINMUX('B', 3, GPIO)>;
+		bias-pull-up;
+		bias-pull-up-value = <2>;	/* PU1 strong (~4.7K@3.3V) */
+		drive-strength = <0>;		/* low (no effect on an input) */
+	};
+
+	/* PB9: GPIO function, high drive strength (output driven by the app). */
+	pb9_gpio_out_hd: pb9_gpio_out_hd {
+		pinmux = <EM32F967_PINMUX('B', 9, GPIO)>;
+		drive-strength = <1>;		/* high */
+	};
+};
+
+/ {
+	zephyr_user: zephyr,user {
+		/* PB3/PB9 pull + drive + GPIO muxing. */
+		pinctrl-0 = <&pb3_gpio_in_pu1 &pb9_gpio_out_hd>;
+		pinctrl-names = "default";
+
+		/* PA14 (idx0) + PB9 (idx1) outputs */
+		out-gpios = <&gpioa 14 GPIO_ACTIVE_HIGH>,
+			    <&gpiob 9 GPIO_ACTIVE_HIGH>;
+
+		/* PB8 (idx0), PA15 (idx1), PB3 (idx2) inputs */
+		in-gpios = <&gpiob 8 GPIO_ACTIVE_HIGH>,
+			   <&gpioa 15 GPIO_ACTIVE_HIGH>,
+			   <&gpiob 3 GPIO_ACTIVE_HIGH>;
+	};
+};
+
+/* PA3 (PWMB_N) high-drive via the DTS method. */
+&pwmb_pa3_n {
+	pinmux = <EM32F967_PINMUX('A', 3, AF7)>;	/* PWMB/PWME Negative */
+	drive-strength = <1>;				/* 1 = high drive (PA3) */
+};
+
+&pwm0 {
+	use-port-a;					/* PA0-PA5 (PWM_S=0) */
+	output-type = <1>;				/* N output only */
+	pinctrl-0 = <&pwmb_pa3_n>;
+	pinctrl-names = "default";
+	status = "okay";
+};
+
+/* Enable the GPIO controllers used by the sample (disabled by board DTS) */
+&gpioa {
+	status = "okay";
+};
+
+&gpiob {
+	status = "okay";
+};
