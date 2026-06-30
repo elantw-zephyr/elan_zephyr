@@ -64,12 +64,12 @@ int z_impl_hwinfo_get_reset_cause(uint32_t *cause)
 	if (SYSSTATUSCTRL->SWRESETS) // SW Reset
 	{
 		*cause = RESET_SOFTWARE;
-	} else if (SYSSTATUSCTRL->BORRESETS) // Brownout Reset
-	{
-		*cause = RESET_BROWNOUT;
 	} else if (SYSSTATUSCTRL->WDTRESETS) // Watchdog Reset
 	{
 		*cause = RESET_WATCHDOG;
+	} else if (SYSSTATUSCTRL->BORRESETS) // Brownout Reset
+	{
+		*cause = RESET_BROWNOUT;
 	} else // Low Power Wake Reset or Reset Pin
 	{
 		SYSREGCTRL->POWEN = 1; // Enable power domain
