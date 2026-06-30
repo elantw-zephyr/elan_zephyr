@@ -174,28 +174,26 @@ static int gpio_em32_pin_configure(const struct device *dev, gpio_pin_t pin, gpi
 	}
 #endif
 
-	if (flags & GPIO_ACTIVE_LOW) {
-		data->common.invert |= pin_mask;
-	} else {
-		data->common.invert &= ~pin_mask;
-	}
+	/*
+	 * Guard the shared driver state (invert mask, clock tracking) and the
+	 * DATAOUT read-modify-write against preemption/ISR races on other pins
+	 * of the same port.
+	 */
+	K_SPINLOCK(&data->lock) {
+		if (flags & GPIO_ACTIVE_LOW) {
+			data->common.invert |= pin_mask;
+		} else {
+			data->common.invert &= ~pin_mask;
+		}
 
-	if ((flags & (GPIO_OUTPUT | GPIO_INPUT)) && !(data->pin_has_clock_enabled & pin_mask)) {
-		data->pin_has_clock_enabled |= pin_mask;
-	}
+		if (flags & (GPIO_OUTPUT | GPIO_INPUT)) {
+			data->pin_has_clock_enabled |= pin_mask;
+		}
 
-	/* Direction + initial value. */
-	if (flags & GPIO_OUTPUT) {
-		/* Enable the output driver for this pin (OUTENSET is write-1-to-set). */
-		em32_gpio_write(dev, GPIO_OUTENSET_OFFSET, pin_mask);
-
-		/*
-		 * Apply the initial output level. The data value lives only in
-		 * DATAOUT, so this is a read-modify-write; guard it against
-		 * preemption/ISR races on other pins of the same port.
-		 */
-		if (flags & (GPIO_OUTPUT_INIT_HIGH | GPIO_OUTPUT_INIT_LOW)) {
-			K_SPINLOCK(&data->lock) {
+		/* Direction + initial value. */
+		if (flags & GPIO_OUTPUT) {
+			/* Set the level first to avoid driving a stale value. */
+			if (flags & (GPIO_OUTPUT_INIT_HIGH | GPIO_OUTPUT_INIT_LOW)) {
 				uint32_t dout = em32_gpio_read(dev, GPIO_DATAOUT_OFFSET);
 
 				if (flags & GPIO_OUTPUT_INIT_HIGH) {
@@ -205,10 +203,12 @@ static int gpio_em32_pin_configure(const struct device *dev, gpio_pin_t pin, gpi
 				}
 				em32_gpio_write(dev, GPIO_DATAOUT_OFFSET, dout);
 			}
+			/* Then enable the output driver (OUTENSET is write-1-to-set). */
+			em32_gpio_write(dev, GPIO_OUTENSET_OFFSET, pin_mask);
+		} else {
+			/* Disable the output driver (input mode). */
+			em32_gpio_write(dev, GPIO_OUTENCLR_OFFSET, pin_mask);
 		}
-	} else {
-		/* Disable the output driver (input mode). */
-		em32_gpio_write(dev, GPIO_OUTENCLR_OFFSET, pin_mask);
 	}
 
 	/* Pull resistor — decode directly from Zephyr flags */
@@ -322,27 +322,22 @@ static int gpio_em32_pin_interrupt_configure(const struct device *dev, gpio_pin_
 	/* Configure interrupt type and polarity based on mode and trigger */
 	switch (trig) {
 	case GPIO_INT_TRIG_LOW:
-		if (mode == GPIO_INT_MODE_EDGE) {
-			em32_gpio_write(dev, GPIO_INTTYPEEDGESET_OFFSET,
-					pin_mask);                             /* Edge triggered */
-			em32_gpio_write(dev, GPIO_INTPOLCLR_OFFSET, pin_mask); /* Falling edge */
-		} else {
-			em32_gpio_write(dev, GPIO_INTTYPEEDGECLR_OFFSET,
-					pin_mask);                             /* Level triggered */
-			em32_gpio_write(dev, GPIO_INTPOLCLR_OFFSET, pin_mask); /* Low level */
-		}
+		em32_gpio_write(dev,
+				(mode == GPIO_INT_MODE_EDGE) ? GPIO_INTTYPEEDGESET_OFFSET
+							     : GPIO_INTTYPEEDGECLR_OFFSET,
+				pin_mask);
+		em32_gpio_write(dev, GPIO_INTPOLCLR_OFFSET, pin_mask); /* falling / low */
 		break;
 	case GPIO_INT_TRIG_HIGH:
-		if (mode == GPIO_INT_MODE_EDGE) {
-			em32_gpio_write(dev, GPIO_INTTYPEEDGESET_OFFSET,
-					pin_mask);                             /* Edge triggered */
-			em32_gpio_write(dev, GPIO_INTPOLSET_OFFSET, pin_mask); /* Rising edge */
-		} else {
-			em32_gpio_write(dev, GPIO_INTTYPEEDGECLR_OFFSET,
-					pin_mask);                             /* Level triggered */
-			em32_gpio_write(dev, GPIO_INTPOLSET_OFFSET, pin_mask); /* High level */
-		}
+		em32_gpio_write(dev,
+				(mode == GPIO_INT_MODE_EDGE) ? GPIO_INTTYPEEDGESET_OFFSET
+							     : GPIO_INTTYPEEDGECLR_OFFSET,
+				pin_mask);
+		em32_gpio_write(dev, GPIO_INTPOLSET_OFFSET, pin_mask); /* rising / high */
 		break;
+	case GPIO_INT_TRIG_BOTH:
+		/* EM32 GPIO selects a single polarity; dual-edge is unsupported. */
+		return -ENOTSUP;
 	default:
 		return -EINVAL;
 	}
@@ -352,21 +347,6 @@ static int gpio_em32_pin_interrupt_configure(const struct device *dev, gpio_pin_
 
 	LOG_DBG("Configured interrupt for port %d pin %d, mode %d, trig %d", config->port, pin,
 		mode, trig);
-
-	uint32_t inten = em32_gpio_read(dev, GPIO_INTENSET_OFFSET);
-	uint32_t itype = em32_gpio_read(dev, GPIO_INTTYPEEDGESET_OFFSET);
-	uint32_t ipol = em32_gpio_read(dev, GPIO_INTPOLSET_OFFSET);
-
-	LOG_DBG("GPIO interrupt registers: INTENSET=0x%04X, INTTYPEEDGE=0x%04X, INTPOL=0x%04X",
-		inten, itype, ipol);
-
-	/* Debug: Show final interrupt configuration */
-	const char *trig_str = (trig == GPIO_INT_TRIG_LOW)    ? "LOW/FALLING"
-			       : (trig == GPIO_INT_TRIG_HIGH) ? "HIGH/RISING"
-							      : "BOTH";
-	const char *mode_str = (mode == GPIO_INT_MODE_EDGE) ? "EDGE" : "LEVEL";
-
-	LOG_DBG("Final interrupt config: %s %s trigger", mode_str, trig_str);
 
 	return 0;
 }
