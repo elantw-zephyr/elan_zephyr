@@ -1,7 +1,7 @@
 /*
  * EM32F967 True Random Number Generator (TRNG) entropy driver
  *
- * Copyright (c) 2025 Elan Microelectronics
+ * SPDX-FileCopyrightText: 2026 ELAN Microelectronics Corp.
  * SPDX-License-Identifier: Apache-2.0
  */
 

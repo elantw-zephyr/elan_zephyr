@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2026 ELAN Microelectronics Corp.
+ * SPDX-FileCopyrightText: 2026 ELAN Microelectronics Corp.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Overlay for samples/elan_pb_pwm — route all six EM32F967 PWM channels

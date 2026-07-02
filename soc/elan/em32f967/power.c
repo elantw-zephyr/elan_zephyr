@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025 ELAN Microelectronics Corp.
+ * SPDX-FileCopyrightText: 2026 ELAN Microelectronics Corp.
  * SPDX-License-Identifier: Apache-2.0
  *
  * EM32F967 Power Management Driver

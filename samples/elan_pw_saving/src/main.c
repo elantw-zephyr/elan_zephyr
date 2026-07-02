@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2026 ELAN Microelectronics Corp.
+ * SPDX-FileCopyrightText: 2026 ELAN Microelectronics Corp.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Power saving test application for EM32F967 (32f967_dv)

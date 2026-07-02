@@ -1,4 +1,4 @@
-# Copyright (c) 2025 Elan Microelectronics Corp.
+# SPDX-FileCopyrightText: 2026 ELAN Microelectronics Corp.
 #
 # SPDX-License-Identifier: Apache-2.0
 
