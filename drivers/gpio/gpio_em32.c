@@ -155,7 +155,6 @@ static inline void em32_gpio_write(const struct device *dev, uint32_t offset, ui
 
 static int gpio_em32_pin_configure(const struct device *dev, gpio_pin_t pin, gpio_flags_t flags)
 {
-	const struct gpio_em32_config *config = dev->config;
 	struct gpio_em32_data *data = dev->data;
 	uint32_t pin_mask = BIT(pin);
 	int ret;
@@ -164,7 +163,7 @@ static int gpio_em32_pin_configure(const struct device *dev, gpio_pin_t pin, gpi
 		return -EINVAL;
 	}
 
-	LOG_DBG("Configuring port %d pin %d with flags 0x%08X", config->port, pin, flags);
+	LOG_DBG("Configuring pin %d with flags 0x%08X", pin, flags);
 
 #ifdef CONFIG_PM_DEVICE_RUNTIME
 	ret = pm_device_runtime_get(dev);
@@ -305,7 +304,6 @@ static int gpio_em32_port_toggle_bits(const struct device *dev, uint32_t pins)
 static int gpio_em32_pin_interrupt_configure(const struct device *dev, gpio_pin_t pin,
 					     enum gpio_int_mode mode, enum gpio_int_trig trig)
 {
-	const struct gpio_em32_config *config = dev->config;
 	uint32_t pin_mask = BIT(pin);
 
 	if (pin >= 16) {
@@ -345,8 +343,7 @@ static int gpio_em32_pin_interrupt_configure(const struct device *dev, gpio_pin_
 	/* Enable interrupt */
 	em32_gpio_write(dev, GPIO_INTENSET_OFFSET, pin_mask);
 
-	LOG_DBG("Configured interrupt for port %d pin %d, mode %d, trig %d", config->port, pin,
-		mode, trig);
+	LOG_DBG("Configured interrupt for pin %d, mode %d, trig %d", pin, mode, trig);
 
 	return 0;
 }
@@ -361,20 +358,18 @@ static int gpio_em32_manage_callback(const struct device *dev, struct gpio_callb
 
 static void gpio_em32_isr(const struct device *dev)
 {
-	const struct gpio_em32_config *config = dev->config;
 	struct gpio_em32_data *data = dev->data;
 	uint32_t int_status;
 
 	/* Read interrupt status */
 	int_status = em32_gpio_read(dev, GPIO_INTSTATUSANDCLR_OFFSET);
 
-	LOG_DBG("GPIO port %d interrupt, status: 0x%04X", config->port, int_status);
+	LOG_DBG("GPIO interrupt, status: 0x%04X", int_status);
 
 	/* Clear interrupt status by writing 1 to the bits (RW1C register) */
 	if (int_status != 0) {
 		em32_gpio_write(dev, GPIO_INTSTATUSANDCLR_OFFSET, int_status);
-		LOG_DBG("GPIO port %d interrupt cleared, status was: 0x%04X", config->port,
-			int_status);
+		LOG_DBG("GPIO interrupt cleared, status was: 0x%04X", int_status);
 	}
 
 	/* Fire callbacks */
@@ -545,10 +540,7 @@ static int __maybe_unused gpio_em32_pm_action(const struct device *dev,
 	PM_DEVICE_DT_INST_DEFINE(n, gpio_em32_pm_action);                                          \
                                                                                                    \
 	static const struct gpio_em32_config gpio_em32_config_##n = {                              \
-		.common =                                                                          \
-			{                                                                          \
-				.port_pin_mask = GPIO_PORT_PIN_MASK_FROM_DT_INST(n),               \
-			},                                                                         \
+		.common = GPIO_COMMON_CONFIG_FROM_DT_INST(n),                                      \
 		.base = DT_INST_REG_ADDR(n),                                                       \
 		.sysctrl_base = DT_REG_ADDR(DT_NODELABEL(sysctrl)),                                \
 		.clock_dev = DEVICE_DT_GET(DT_INST_CLOCKS_CTLR(n)),                                \
