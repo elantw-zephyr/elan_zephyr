@@ -289,31 +289,6 @@ static void pm_log_registers(const char *prefix)
 }
 
 /* ======================= Helper Functions ================================ */
-void normal_toggle_pb8_power(uint32_t times, uint32_t delay)
-{
-    CLKGatingDisable(HCLKG_GPIOB);
-    GPIO_SetOutput(GPIOIPB, GPIO_PINSOURCE8, GPIO_PuPd_Floating);
-    //GPIO_WriteBit(GPIOIPB, GPIO_PIN_8, (BitAction)1);
-    for (int i=0; i < times; i++) {
-           GPIO_ToggleBits(GPIOIPB, GPIO_PIN_8);
-           for (int j=0; j<delay; j++) {
-                   k_busy_wait(10);
-           }
-    }
-}
-
-void normal_toggle_pb9_power(uint32_t times, uint32_t delay)
-{
-    CLKGatingDisable(HCLKG_GPIOB);
-    GPIO_SetOutput(GPIOIPB, GPIO_PINSOURCE9, GPIO_PuPd_Floating);
-    //GPIO_WriteBit(GPIOIPB, GPIO_PIN_9, (BitAction)1);
-    for (int i=0; i < times; i++) {
-           GPIO_ToggleBits(GPIOIPB, GPIO_PIN_9);
-           for (int j=0; j<delay; j++) {
-                   k_busy_wait(10);
-           }
-    }
-}
 
 /**
  * @brief Re-initialize UART after frequency change in PDSW1 recovery
@@ -946,7 +921,6 @@ static void pm_enter_standby1(bool rtc_enable)
 			 * pm_switch_to_low_freq().
 			 */
 	}
-	normal_toggle_pb8_power(14, 1);
 	/* Step 14: Set power domain switch to PDSW2 */
 	//pm_log_registers("Step 14: BEFORE Set POWERSW to PDSW2");
 	PM_POWERSWCTRL->POWERSW = PDSW2;
@@ -1898,7 +1872,6 @@ void pm_state_set(enum pm_state state, uint8_t substate_id)
 
 	switch (state) {
 	case PM_STATE_SUSPEND_TO_IDLE:
-		normal_toggle_pb8_power(16, 1);
 		pm_log_registers("BEFORE PDSW1 Entry");
 		dump_peripheral_regs(PM_DUMP_BEFORE);
 
@@ -1913,7 +1886,6 @@ void pm_state_set(enum pm_state state, uint8_t substate_id)
 		__asm volatile ("mrs %0, basepri" : "=r" (old_basepri));
 		LOG_INF("Old BASEPRI: 0x%02X, PRIMASK: 0x%02X", old_basepri, old_primask);
 
-		//normal_toggle_pb8_power(18, 1);
 		//SCB->SCR &= ~SCB_SCR_SEVONPEND_Msk;
 		SCB->SCR |= SCB_SCR_SLEEPDEEP_Msk; /* Deep sleep, not Normal deep */
 		/* pm_state_set() runs from the idle thread with interrupts locked
@@ -1950,7 +1922,6 @@ void pm_state_set(enum pm_state state, uint8_t substate_id)
 
 		/* Restore the SysTick interrupt-enable state. */
 		SysTick->CTRL = systick_ctrl;
-		normal_toggle_pb8_power(20, 1);
 		pm_log_registers("AFTER PDSW1 plain-WFI (A/B test)");
 #else
 		uint32_t old_primask = __get_PRIMASK();
@@ -1966,7 +1937,6 @@ void pm_state_set(enum pm_state state, uint8_t substate_id)
 		pm_clk_gating_disable(PCLKG_PWR);
 		PM_SYSREGCTRL->POWEN = 1;
 		pm_switch_to_low_freq();
-		normal_toggle_pb8_power(18, 1);
 		PM_POWERSWCTRL->POWERSW = PDSW1;
 		while (PM_POWERSWCTRL->POWERSW != PDSW1) {
 			//pm_log_registers("Waiting for PDSW1 to take effect...");
@@ -2059,19 +2029,16 @@ void pm_state_set(enum pm_state state, uint8_t substate_id)
 		 * no UART recalculation is required.
 		 */
 		elan_em32_set_ahb_freq(DEVICE_DT_GET(DT_NODELABEL(clk_ahb_v2)));
-		normal_toggle_pb9_power(6, 1);
 		pm_uart_recalc_baudrate_pdsw1();
 		restore_peripheral_regs_after_lp();
 		GPIO_SetOutput( GPIOIPB, GPIO_PINSOURCE4, GPIO_PuPd_Floating );
 		GPIO_WriteBit( GPIOIPB, GPIO_PIN_4, (BitAction)1);
 		dump_peripheral_regs(PM_DUMP_AFTER);
-		normal_toggle_pb8_power(10, 1);
 		pm_log_registers("AFTER WFI - PDSW1 Recovery Complete");
 #endif
 
 		/* Re-enable watchdog after waking from sleep */
 		pm_watchdog_enable_pdsw1();
-		normal_toggle_pb9_power(10, 1);
 
 		LOG_INF("[PDSW1_RESUME] System fully restored to active mode");
 		break;
@@ -2084,7 +2051,6 @@ void pm_state_set(enum pm_state state, uint8_t substate_id)
 			//break;
 		//}
 		/* Standby modes (PDSW2/PDSW4) with optional RTC */
-		normal_toggle_pb8_power(12, 1);
 		pm_handle_standby_modes(state, substate_id);
 		break;
 
@@ -2111,7 +2077,6 @@ void pm_state_exit_post_ops(enum pm_state state, uint8_t substate_id)
 	switch (state) {
 	case PM_STATE_SUSPEND_TO_IDLE:
 		/* Nothing special needed for light sleep */
-		normal_toggle_pb8_power(22, 1);
 		pm_log_registers("pm_state_exit_post_ops: Woke up from SUSPEND_TO_IDLE (PDSW1)");
 
 		break;
