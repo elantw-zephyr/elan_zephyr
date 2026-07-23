@@ -21,6 +21,9 @@ LOG_MODULE_REGISTER(em32_ahb, CONFIG_LOG_DEFAULT_LEVEL);
 #define DWT_UNLOCK_KEY 0xC5ACCE55U
 #define EM32_GATE_MAX  63U
 
+/* Serialize clock gate register updates. */
+static struct k_spinlock ahb_clock_lock;
+
 struct elan_em32_ahb_clock_control_config {
 	mm_reg_t sysctrl_base;
 	mm_reg_t clkctrl_base;
@@ -152,6 +155,9 @@ static inline bool em32_gate_is_valid(uint32_t gate_idx)
  * Write a single gate bit using the unified field RMW helper.
  * For ALL, only EM32_GATE_OPEN is accepted (open all clocks).
  * Closing ALL clocks is rejected as unsafe.
+ *
+ * Clock gate register updates are serialized with ahb_clock_lock
+ * to prevent interleaving of concurrent gate operations.
  */
 static inline void em32_clk_gate_write(mm_reg_t base, uint32_t gate_idx, enum em32_gate_val val)
 {
@@ -162,8 +168,12 @@ static inline void em32_clk_gate_write(mm_reg_t base, uint32_t gate_idx, enum em
 
 	if (em32_gate_is_all(gate_idx)) {
 		if (val == EM32_GATE_OPEN) {
-			sys_write32((uint32_t)EM32_GATE_OPEN, base + SYSCTRL_CLK_GATE_REG_OFF);
-			sys_write32((uint32_t)EM32_GATE_OPEN, base + SYSCTRL_CLK_GATE_REG2_OFF);
+			K_SPINLOCK(&ahb_clock_lock) {
+				sys_write32((uint32_t)EM32_GATE_OPEN,
+					    base + SYSCTRL_CLK_GATE_REG_OFF);
+				sys_write32((uint32_t)EM32_GATE_OPEN,
+					    base + SYSCTRL_CLK_GATE_REG2_OFF);
+			}
 		} else {
 			/* Reject closing all gates to avoid system shutdown. */
 			LOG_WRN("Closing ALL gates is not supported");
@@ -174,7 +184,9 @@ static inline void em32_clk_gate_write(mm_reg_t base, uint32_t gate_idx, enum em
 	uint32_t bit = (gate_idx <= 31u) ? gate_idx : (gate_idx - 32u);
 	uint32_t off = (gate_idx <= 31u) ? SYSCTRL_CLK_GATE_REG_OFF : SYSCTRL_CLK_GATE_REG2_OFF;
 
-	ahb_em32_write_field(base, off, BIT(bit), (uint32_t)val);
+	K_SPINLOCK(&ahb_clock_lock) {
+		ahb_em32_write_field(base, off, BIT(bit), (uint32_t)val);
+	}
 }
 
 static inline void em32_clk_gate_open(mm_reg_t base, uint32_t gate_idx)
