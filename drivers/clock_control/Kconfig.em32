@@ -7,6 +7,7 @@ config CLOCK_CONTROL_EM32_AHB
 	default y
 	depends on SOC_EM32F967
 	depends on DT_HAS_ELAN_EM32_AHB_ENABLED
+	select SYSCON
 	help
 	  This option enables the clock controller ahb driver for EM32FXXX.
 

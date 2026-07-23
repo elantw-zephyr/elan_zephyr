@@ -12,6 +12,7 @@
 #include <zephyr/kernel.h>
 #include <zephyr/sys/util.h>
 #include <zephyr/logging/log.h>
+#include <zephyr/drivers/syscon.h>
 LOG_MODULE_REGISTER(em32_ahb, CONFIG_LOG_DEFAULT_LEVEL);
 
 #include <soc_clkctrl.h>
@@ -25,11 +26,10 @@ BUILD_ASSERT(CONFIG_SYSCON_INIT_PRIORITY < CONFIG_CLOCK_CONTROL_EM32_AHB_INIT_PR
 #define DWT_UNLOCK_KEY 0xC5ACCE55U
 #define EM32_GATE_MAX  63U
 
-/* Serialize clock gate register updates. */
-static struct k_spinlock ahb_clock_lock;
+/* Clock gate register updates are serialized by syscon_update_bits() internal spinlock. */
 
 struct elan_em32_ahb_clock_control_config {
-	mm_reg_t sysctrl_base;
+	const struct device *sysctrl_syscon;
 	mm_reg_t clkctrl_base;
 	mm_reg_t infoctrl_base;
 	uint32_t clock_source;
@@ -138,6 +138,42 @@ static inline void ahb_em32_write_field(mm_reg_t base, uint32_t offset, uint32_t
 	sys_write32(reg, base + offset);
 }
 
+/* Syscon-based helpers for SYSCTRL register access */
+static inline int ahb_em32_syscon_read_field(const struct device *syscon, uint32_t offset,
+					     uint32_t mask, uint32_t *value)
+{
+	uint32_t reg;
+	int ret;
+
+	ret = syscon_read_reg(syscon, offset, &reg);
+	if (ret < 0) {
+		return ret;
+	}
+	*value = FIELD_GET(mask, reg);
+	return 0;
+}
+
+static inline int ahb_em32_syscon_write_field(const struct device *syscon, uint32_t offset,
+					      uint32_t mask, uint32_t value)
+{
+	int ret;
+
+	__ASSERT(mask != 0U, "mask must not be zero");
+
+	/* Optional: check value range */
+	if ((value << __builtin_ctz(mask)) & ~mask) {
+		LOG_ERR("Value 0x%x exceeds field mask 0x%x", value, mask);
+		return -EINVAL;
+	}
+
+	ret = syscon_update_bits(syscon, offset, mask, value << __builtin_ctz(mask));
+	if (ret < 0) {
+		LOG_ERR("Failed to write syscon field: %d", ret);
+		return ret;
+	}
+	return 0;
+}
+
 /* Gate value semantics for readability. */
 enum em32_gate_val {
 	EM32_GATE_OPEN = 0u,   /* clear bit -> clock enabled */
@@ -160,53 +196,55 @@ static inline bool em32_gate_is_valid(uint32_t gate_idx)
  * For ALL, only EM32_GATE_OPEN is accepted (open all clocks).
  * Closing ALL clocks is rejected as unsafe.
  *
- * Clock gate register updates are serialized with ahb_clock_lock
- * to prevent interleaving of concurrent gate operations.
+ * Clock gate register updates are serialized by syscon_update_bits()
+ * internal spinlock, so no additional locking is needed here.
  */
-static inline void em32_clk_gate_write(mm_reg_t base, uint32_t gate_idx, enum em32_gate_val val)
+static inline int em32_clk_gate_write(const struct device *syscon, uint32_t gate_idx,
+				      enum em32_gate_val val)
 {
+	int ret;
+
 	if (!em32_gate_is_valid(gate_idx)) {
 		LOG_ERR("Gate index %u out of range", gate_idx);
-		return;
+		return -EINVAL;
 	}
 
 	if (em32_gate_is_all(gate_idx)) {
 		if (val == EM32_GATE_OPEN) {
-			K_SPINLOCK(&ahb_clock_lock) {
-				sys_write32((uint32_t)EM32_GATE_OPEN,
-					    base + SYSCTRL_CLK_GATE_REG_OFF);
-				sys_write32((uint32_t)EM32_GATE_OPEN,
-					    base + SYSCTRL_CLK_GATE_REG2_OFF);
+			ret = syscon_write_reg(syscon, SYSCTRL_CLK_GATE_REG_OFF,
+					       (uint32_t)EM32_GATE_OPEN);
+			if (ret < 0) {
+				return ret;
 			}
+			return syscon_write_reg(syscon, SYSCTRL_CLK_GATE_REG2_OFF,
+						(uint32_t)EM32_GATE_OPEN);
 		} else {
 			/* Reject closing all gates to avoid system shutdown. */
 			LOG_WRN("Closing ALL gates is not supported");
+			return -ENOTSUP;
 		}
-		return;
 	}
 
 	uint32_t bit = (gate_idx <= 31u) ? gate_idx : (gate_idx - 32u);
 	uint32_t off = (gate_idx <= 31u) ? SYSCTRL_CLK_GATE_REG_OFF : SYSCTRL_CLK_GATE_REG2_OFF;
 
-	K_SPINLOCK(&ahb_clock_lock) {
-		ahb_em32_write_field(base, off, BIT(bit), (uint32_t)val);
-	}
+	return syscon_update_bits(syscon, off, BIT(bit), (uint32_t)val);
 }
 
-static inline void em32_clk_gate_open(mm_reg_t base, uint32_t gate_idx)
+static inline int em32_clk_gate_open(const struct device *syscon, uint32_t gate_idx)
 {
-	em32_clk_gate_write(base, gate_idx, EM32_GATE_OPEN);
+	return em32_clk_gate_write(syscon, gate_idx, EM32_GATE_OPEN);
 }
 
-static inline void em32_clk_gate_close(mm_reg_t base, uint32_t gate_idx)
+static inline int em32_clk_gate_close(const struct device *syscon, uint32_t gate_idx)
 {
-	em32_clk_gate_write(base, gate_idx, EM32_GATE_CLOSED);
+	return em32_clk_gate_write(syscon, gate_idx, EM32_GATE_CLOSED);
 }
 
 static int elan_em32_get_ahb_freq(const struct device *dev, uint32_t *freq)
 {
 	const struct elan_em32_ahb_clock_control_config *config = dev->config;
-	mm_reg_t sysctrl_base = config->sysctrl_base;
+	const struct device *sysctrl_syscon = config->sysctrl_syscon;
 	mm_reg_t clkctrl_base = config->clkctrl_base;
 	uint32_t irc_freq_khz;
 	uint32_t irc_pll_freq_khz;
@@ -245,16 +283,27 @@ static int elan_em32_get_ahb_freq(const struct device *dev, uint32_t *freq)
 		return -EINVAL;
 	}
 
-	uint32_t hclk_sel =
-		ahb_em32_read_field(sysctrl_base, SYSCTRL_SYS_REG_CTRL_OFF, SYSCTRL_HCLK_SEL_MASK);
+	uint32_t hclk_sel;
+	int ret;
+
+	ret = ahb_em32_syscon_read_field(sysctrl_syscon, SYSCTRL_SYS_REG_CTRL_OFF,
+					 SYSCTRL_HCLK_SEL_MASK, &hclk_sel);
+	if (ret < 0) {
+		return ret;
+	}
 	switch (hclk_sel) {
 	case 0x00:
 		main_freq_khz = irc_freq_khz;
 		break;
 
 	case 0x01: {
-		uint32_t xtal_hirc_sel = ahb_em32_read_field(sysctrl_base, SYSCTRL_SYS_REG_CTRL_OFF,
-							     SYSCTRL_XTAL_HIRC_SEL);
+		uint32_t xtal_hirc_sel;
+
+		ret = ahb_em32_syscon_read_field(sysctrl_syscon, SYSCTRL_SYS_REG_CTRL_OFF,
+						 SYSCTRL_XTAL_HIRC_SEL, &xtal_hirc_sel);
+		if (ret < 0) {
+			return ret;
+		}
 		if (xtal_hirc_sel) {
 			main_freq_khz = 24000 * 5;
 		} else {
@@ -272,8 +321,13 @@ static int elan_em32_get_ahb_freq(const struct device *dev, uint32_t *freq)
 		break;
 	}
 
-	uint32_t hclk_div =
-		ahb_em32_read_field(sysctrl_base, SYSCTRL_SYS_REG_CTRL_OFF, SYSCTRL_HCLK_DIV_MASK);
+	uint32_t hclk_div;
+
+	ret = ahb_em32_syscon_read_field(sysctrl_syscon, SYSCTRL_SYS_REG_CTRL_OFF,
+					 SYSCTRL_HCLK_DIV_MASK, &hclk_div);
+	if (ret < 0) {
+		return ret;
+	}
 	main_freq_khz = main_freq_khz >> hclk_div;
 	ahb_freq_khz = main_freq_khz;
 
@@ -284,7 +338,7 @@ static int elan_em32_get_ahb_freq(const struct device *dev, uint32_t *freq)
 static int elan_em32_set_ahb_freq(const struct device *dev)
 {
 	const struct elan_em32_ahb_clock_control_config *config = dev->config;
-	mm_reg_t sysctrl_base = config->sysctrl_base;
+	const struct device *sysctrl_syscon = config->sysctrl_syscon;
 	mm_reg_t clkctrl_base = config->clkctrl_base;
 	mm_reg_t infoctrl_base = config->infoctrl_base;
 	uint32_t clk_src = config->clock_source;
@@ -293,25 +347,46 @@ static int elan_em32_set_ahb_freq(const struct device *dev)
 	bool b_pll;
 	int ret;
 
-	em32_clk_gate_open(sysctrl_base, EM32_GATE_PCLKG_AIP);
-
-	if (freq_src == EM32_CLK_FREQ_IRCLOW12 /* irc_freq_src */) {
-		ahb_em32_write_field(sysctrl_base, SYSCTRL_SYS_REG_CTRL_OFF, SYSCTRL_HCLK_DIV_MASK,
-				     pre_div);
-		return 0;
+	ret = em32_clk_gate_open(sysctrl_syscon, EM32_GATE_PCLKG_AIP);
+	if (ret < 0) {
+		LOG_ERR("Failed to open AIP clock gate: %d", ret);
+		return ret;
 	}
 
-	ahb_em32_write_field(sysctrl_base, SYSCTRL_MISC_REG_CTRL_OFF, SYSCTRL_WAIT_COUNT_PASS_MASK,
-			     0x0a);
-	ahb_em32_write_field(sysctrl_base, SYSCTRL_MISC_REG_CTRL_OFF, SYSCTRL_WAIT_COUNT_MASK,
-			     0x03);
-	ahb_em32_write_field(sysctrl_base, SYSCTRL_MISC_REG_CTRL_OFF, SYSCTRL_WAIT_COUNT_SET, 0x01);
+	if (freq_src == EM32_CLK_FREQ_IRCLOW12 /* irc_freq_src */) {
+		return ahb_em32_syscon_write_field(sysctrl_syscon, SYSCTRL_SYS_REG_CTRL_OFF,
+						   SYSCTRL_HCLK_DIV_MASK, pre_div);
+	}
 
-	uint32_t hclk_sel =
-		ahb_em32_read_field(sysctrl_base, SYSCTRL_SYS_REG_CTRL_OFF, SYSCTRL_HCLK_SEL_MASK);
+	ret = ahb_em32_syscon_write_field(sysctrl_syscon, SYSCTRL_MISC_REG_CTRL_OFF,
+					  SYSCTRL_WAIT_COUNT_PASS_MASK, 0x0a);
+	if (ret < 0) {
+		return ret;
+	}
+	ret = ahb_em32_syscon_write_field(sysctrl_syscon, SYSCTRL_MISC_REG_CTRL_OFF,
+					  SYSCTRL_WAIT_COUNT_MASK, 0x03);
+	if (ret < 0) {
+		return ret;
+	}
+	ret = ahb_em32_syscon_write_field(sysctrl_syscon, SYSCTRL_MISC_REG_CTRL_OFF,
+					  SYSCTRL_WAIT_COUNT_SET, 0x01);
+	if (ret < 0) {
+		return ret;
+	}
+
+	uint32_t hclk_sel;
+
+	ret = ahb_em32_syscon_read_field(sysctrl_syscon, SYSCTRL_SYS_REG_CTRL_OFF,
+					 SYSCTRL_HCLK_SEL_MASK, &hclk_sel);
+	if (ret < 0) {
+		return ret;
+	}
 	if (hclk_sel == 0x01) {
-		ahb_em32_write_field(sysctrl_base, SYSCTRL_SYS_REG_CTRL_OFF, SYSCTRL_HCLK_SEL_MASK,
-				     0x00);
+		ret = ahb_em32_syscon_write_field(sysctrl_syscon, SYSCTRL_SYS_REG_CTRL_OFF,
+						  SYSCTRL_HCLK_SEL_MASK, 0x00);
+		if (ret < 0) {
+			return ret;
+		}
 		delay_us(100);
 		ahb_em32_write_field(clkctrl_base, CLKCTRL_SYS_PLL_CTRL_OFF, CLKCTRL_SYS_PLL_PD,
 				     0x01);
@@ -319,8 +394,11 @@ static int elan_em32_set_ahb_freq(const struct device *dev)
 	}
 
 	if (clk_src == EM32_CLK_SRC_EXTERNAL1) {
-		ahb_em32_write_field(sysctrl_base, SYSCTRL_SYS_REG_CTRL_OFF, SYSCTRL_HCLK_SEL_MASK,
-				     0x02);
+		ret = ahb_em32_syscon_write_field(sysctrl_syscon, SYSCTRL_SYS_REG_CTRL_OFF,
+						  SYSCTRL_HCLK_SEL_MASK, 0x02);
+		if (ret < 0) {
+			return ret;
+		}
 	} else {
 		if (freq_src >> 4) {
 			b_pll = true;
@@ -409,8 +487,11 @@ static int elan_em32_set_ahb_freq(const struct device *dev)
 		delay_us(100);
 		ahb_em32_write_field(clkctrl_base, CLKCTRL_MIRC_CTRL_OFF, CLKCTRL_MIRC_RCM_MASK,
 				     (freq_src & 0x0f));
-		ahb_em32_write_field(sysctrl_base, SYSCTRL_SYS_REG_CTRL_OFF, SYSCTRL_XTAL_HIRC_SEL,
-				     0x00);
+		ret = ahb_em32_syscon_write_field(sysctrl_syscon, SYSCTRL_SYS_REG_CTRL_OFF,
+						  SYSCTRL_XTAL_HIRC_SEL, 0x00);
+		if (ret < 0) {
+			return ret;
+		}
 
 		if (b_pll) {
 			switch (freq_src) {
@@ -451,12 +532,18 @@ static int elan_em32_set_ahb_freq(const struct device *dev)
 						   CLKCTRL_SYS_PLL_STABLE) == 0) {
 			}
 			delay_us(1);
-			ahb_em32_write_field(sysctrl_base, SYSCTRL_SYS_REG_CTRL_OFF,
-					     SYSCTRL_HCLK_SEL_MASK, 0x01);
+			ret = ahb_em32_syscon_write_field(sysctrl_syscon, SYSCTRL_SYS_REG_CTRL_OFF,
+							  SYSCTRL_HCLK_SEL_MASK, 0x01);
+			if (ret < 0) {
+				return ret;
+			}
 			delay_us(1);
 		} else {
-			ahb_em32_write_field(sysctrl_base, SYSCTRL_SYS_REG_CTRL_OFF,
-					     SYSCTRL_HCLK_SEL_MASK, 0x00);
+			ret = ahb_em32_syscon_write_field(sysctrl_syscon, SYSCTRL_SYS_REG_CTRL_OFF,
+							  SYSCTRL_HCLK_SEL_MASK, 0x00);
+			if (ret < 0) {
+				return ret;
+			}
 			delay_us(100);
 			ahb_em32_write_field(clkctrl_base, CLKCTRL_SYS_PLL_CTRL_OFF,
 					     CLKCTRL_SYS_PLL_PD, 0x01);
@@ -464,18 +551,31 @@ static int elan_em32_set_ahb_freq(const struct device *dev)
 	}
 
 	if (pre_div == EM32_AHB_CLK_DIV128) {
-		ahb_em32_write_field(sysctrl_base, SYSCTRL_SYS_REG_CTRL_OFF, SYSCTRL_HCLK_DIV_MASK,
-				     (pre_div - 1));
+		ret = ahb_em32_syscon_write_field(sysctrl_syscon, SYSCTRL_SYS_REG_CTRL_OFF,
+						  SYSCTRL_HCLK_DIV_MASK, pre_div - 1);
 	} else {
-		ahb_em32_write_field(sysctrl_base, SYSCTRL_SYS_REG_CTRL_OFF, SYSCTRL_HCLK_DIV_MASK,
-				     (pre_div + 1));
+		ret = ahb_em32_syscon_write_field(sysctrl_syscon, SYSCTRL_SYS_REG_CTRL_OFF,
+						  SYSCTRL_HCLK_DIV_MASK, pre_div + 1);
+	}
+	if (ret < 0) {
+		return ret;
 	}
 
-	ahb_em32_write_field(sysctrl_base, SYSCTRL_MISC_REG_CTRL_OFF, SYSCTRL_WAIT_COUNT_SET, 0x00);
-	ahb_em32_write_field(sysctrl_base, SYSCTRL_MISC_REG_CTRL_OFF, SYSCTRL_WAIT_COUNT_PASS_MASK,
-			     0x00);
-	ahb_em32_write_field(sysctrl_base, SYSCTRL_SYS_REG_CTRL_OFF, SYSCTRL_HCLK_DIV_MASK,
-			     pre_div);
+	ret = ahb_em32_syscon_write_field(sysctrl_syscon, SYSCTRL_MISC_REG_CTRL_OFF,
+					  SYSCTRL_WAIT_COUNT_SET, 0x00);
+	if (ret < 0) {
+		return ret;
+	}
+	ret = ahb_em32_syscon_write_field(sysctrl_syscon, SYSCTRL_MISC_REG_CTRL_OFF,
+					  SYSCTRL_WAIT_COUNT_PASS_MASK, 0x00);
+	if (ret < 0) {
+		return ret;
+	}
+	ret = ahb_em32_syscon_write_field(sysctrl_syscon, SYSCTRL_SYS_REG_CTRL_OFF,
+					  SYSCTRL_HCLK_DIV_MASK, pre_div);
+	if (ret < 0) {
+		return ret;
+	}
 
 	ret = elan_em32_get_ahb_freq(dev, &ahb_count_khz);
 	if (ret) {
@@ -489,11 +589,16 @@ static int elan_em32_ahb_clock_control_on(const struct device *dev, clock_contro
 {
 	const struct elan_em32_ahb_clock_control_config *cfg = dev->config;
 	uint32_t clk_grp = POINTER_TO_UINT(sys);
+	int ret;
 
 	/* API-level "ALL" */
 	if (sys == CLOCK_CONTROL_SUBSYS_ALL || clk_grp == EM32_GATE_PCLKG_ALL) {
 		/* Enabling all clock == open gate. */
-		em32_clk_gate_open(cfg->sysctrl_base, EM32_GATE_PCLKG_ALL);
+		ret = em32_clk_gate_open(cfg->sysctrl_syscon, EM32_GATE_PCLKG_ALL);
+		if (ret < 0) {
+			LOG_ERR("Failed to open all clock gates: %d", ret);
+			return ret;
+		}
 		return 0;
 	}
 
@@ -509,7 +614,11 @@ static int elan_em32_ahb_clock_control_on(const struct device *dev, clock_contro
 	}
 
 	/* Enabling a clock == open gate (clear the bit). */
-	em32_clk_gate_open(cfg->sysctrl_base, clk_grp);
+	ret = em32_clk_gate_open(cfg->sysctrl_syscon, clk_grp);
+	if (ret < 0) {
+		LOG_ERR("Failed to open clock gate %u: %d", clk_grp, ret);
+		return ret;
+	}
 	return 0;
 }
 
@@ -517,6 +626,7 @@ static int elan_em32_ahb_clock_control_off(const struct device *dev, clock_contr
 {
 	const struct elan_em32_ahb_clock_control_config *cfg = dev->config;
 	uint32_t clk_grp = POINTER_TO_UINT(sys);
+	int ret;
 
 	/* Do not support closing ALL clocks; reject explicitly. */
 	if (sys == CLOCK_CONTROL_SUBSYS_ALL || clk_grp == EM32_GATE_PCLKG_ALL) {
@@ -534,7 +644,11 @@ static int elan_em32_ahb_clock_control_off(const struct device *dev, clock_contr
 	}
 
 	/* Disabling a clock == close gate (set the bit). */
-	em32_clk_gate_close(cfg->sysctrl_base, clk_grp);
+	ret = em32_clk_gate_close(cfg->sysctrl_syscon, clk_grp);
+	if (ret < 0) {
+		LOG_ERR("Failed to close clock gate %u: %d", clk_grp, ret);
+		return ret;
+	}
 	return 0;
 }
 
@@ -642,7 +756,7 @@ static int elan_em32_ahb_clock_control_init(const struct device *dev)
 }
 
 static const struct elan_em32_ahb_clock_control_config em32_ahb_config = {
-	.sysctrl_base = DT_REG_ADDR(DT_NODELABEL(sysctrl)),
+	.sysctrl_syscon = DEVICE_DT_GET(DT_NODELABEL(sysctrl)),
 	.clkctrl_base = DT_REG_ADDR(DT_NODELABEL(clkctrl)),
 	.infoctrl_base = DT_REG_ADDR(DT_NODELABEL(infoctrl)),
 	.clock_source = DT_PROP(DT_NODELABEL(clk_ahb), clock_source),
