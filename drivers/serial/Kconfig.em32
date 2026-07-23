@@ -6,6 +6,8 @@ config UART_EM32
 	default y
 	depends on SOC_EM32F967
 	depends on DT_HAS_ELAN_EM32_UART_ENABLED
+	depends on CLOCK_CONTROL_EM32_APB
+	depends on GPIO_EM32
 	select SERIAL_HAS_DRIVER
 	select PINCTRL
 	help
@@ -13,9 +15,11 @@ config UART_EM32
 
 config UART_EM32_INIT_PRIORITY
 	int "EM32 UART initialization priority"
-	default 65
+	default 56
 	depends on UART_EM32
 	help
 	  Initialization priority for the EM32 UART driver.
-	  This must be greater than CLOCK_CONTROL_EM32_APB_INIT_PRIORITY since
-	  UART depends on the clock driver and pinctrl.
+	  This must be greater than GPIO_EM32_INIT_PRIORITY and
+	  CLOCK_CONTROL_EM32_APB_INIT_PRIORITY since UART depends on the GPIO,
+	  clock, and pinctrl drivers. When UART is used for the console, it
+	  must also be less than CONSOLE_INIT_PRIORITY.

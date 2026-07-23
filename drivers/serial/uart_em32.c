@@ -15,6 +15,15 @@
 /* APB clock controller must be initialized before UART. */
 BUILD_ASSERT(CONFIG_CLOCK_CONTROL_EM32_APB_INIT_PRIORITY < CONFIG_UART_EM32_INIT_PRIORITY,
 	     "UART must initialize after the APB clock controller");
+/* GPIO must be initialized before UART applies its pinctrl state. */
+BUILD_ASSERT(CONFIG_GPIO_EM32_INIT_PRIORITY < CONFIG_UART_EM32_INIT_PRIORITY,
+	     "UART must initialize after GPIO");
+
+#if defined(CONFIG_UART_CONSOLE)
+/* The UART device must be ready before the UART console initializes. */
+BUILD_ASSERT(CONFIG_UART_EM32_INIT_PRIORITY < CONFIG_CONSOLE_INIT_PRIORITY,
+	     "UART must initialize before the UART console");
+#endif
 
 /* EM32 UART register offsets - corrected per spec */
 #define UART_DATA_OFFSET      0x00

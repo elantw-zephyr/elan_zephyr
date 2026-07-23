@@ -8,6 +8,7 @@ config GPIO_EM32
 	default y
 	depends on SOC_EM32F967
 	depends on DT_HAS_ELAN_EM32_GPIO_ENABLED
+	depends on CLOCK_CONTROL_EM32_AHB
 	select SYSCON
 	help
 	  Enable GPIO driver for ELAN EM32F967 microcontroller.

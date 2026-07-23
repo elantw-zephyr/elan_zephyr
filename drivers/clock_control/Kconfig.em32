@@ -16,6 +16,7 @@ config CLOCK_CONTROL_EM32_APB
 	default y
 	depends on SOC_EM32F967
 	depends on DT_HAS_ELAN_EM32_APB_ENABLED
+	depends on CLOCK_CONTROL_EM32_AHB
 	help
 	  This option enables the clock controller apb driver for EM32FXXX.
 
