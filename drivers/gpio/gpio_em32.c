@@ -11,6 +11,7 @@
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/drivers/gpio/gpio_utils.h>
 #include <zephyr/drivers/clock_control.h>
+#include <zephyr/drivers/syscon.h>
 #include <zephyr/dt-bindings/gpio/gpio.h>
 #include <zephyr/irq.h>
 #include <zephyr/logging/log.h>
@@ -60,8 +61,7 @@ struct gpio_em32_config {
 	struct gpio_driver_config common;
 	/* GPIO port base address */
 	uint32_t base;
-	/* sysctrl (syscon) base address for IOMUX / pupd / hd / clk gate */
-	uint32_t sysctrl_base;
+	const struct device *syscon;
 	/* Clock device (from DT `clocks` phandle) */
 	const struct device *clock_dev;
 	/* Clock gate id (from DT `gate-id` cells) */
@@ -82,30 +82,23 @@ struct gpio_em32_data {
 	sys_slist_t callbacks;
 	/* Clock tracking for power management */
 	uint32_t pin_has_clock_enabled;
-	/* Guards read-modify-write of DATAOUT and the shared sysctrl pull/OD
-	 * registers against preemption, ISRs and (on SMP) other cores.
-	 */
 	struct k_spinlock lock;
 };
 
 static int em32_gpio_configure_pull(const struct device *dev, uint32_t pin, uint32_t pull)
 {
 	const struct gpio_em32_config *config = dev->config;
-	struct gpio_em32_data *data = dev->data;
-	uint32_t reg_addr;
-	uint32_t shift;
-	uint32_t mask;
-	uint32_t reg_val;
+	uint32_t offset =
+		(config->port == 0) ? EM32_IOPUPACTRL_OFFSET : EM32_IOPUPBCTRL_OFFSET;
+	uint32_t shift = pin * 2U; /* 2 bits per pin */
+	int ret;
 
-	reg_addr = config->sysctrl_base +
-		   ((config->port == 0) ? EM32_IOPUPACTRL_OFFSET : EM32_IOPUPBCTRL_OFFSET);
-	shift = pin * 2; /* 2 bits per pin */
-	mask = 0x3 << shift;
-
-	K_SPINLOCK(&data->lock) {
-		reg_val = sys_read32(reg_addr);
-		reg_val = (reg_val & ~mask) | ((pull & 0x3) << shift);
-		sys_write32(reg_val, reg_addr);
+	ret = syscon_update_bits(config->syscon, offset, 0x3U << shift,
+				 (pull & 0x3U) << shift);
+	if (ret < 0) {
+		LOG_ERR("Failed to set P%c%d pull: %d", (config->port == 0) ? 'A' : 'B', pin,
+			ret);
+		return ret;
 	}
 
 	LOG_DBG("Configured P%c%d pull to %d", (config->port == 0) ? 'A' : 'B', pin, pull);
@@ -115,23 +108,16 @@ static int em32_gpio_configure_pull(const struct device *dev, uint32_t pin, uint
 static int em32_gpio_configure_open_drain(const struct device *dev, uint32_t pin, bool open_drain)
 {
 	const struct gpio_em32_config *config = dev->config;
-	struct gpio_em32_data *data = dev->data;
-	uint32_t reg_addr;
-	uint32_t pin_mask;
-	uint32_t reg_val;
+	uint32_t offset =
+		(config->port == 0) ? EM32_IOODEPACTRL_OFFSET : EM32_IOODEPBCTRL_OFFSET;
+	int ret;
 
-	reg_addr = config->sysctrl_base +
-		   ((config->port == 0) ? EM32_IOODEPACTRL_OFFSET : EM32_IOODEPBCTRL_OFFSET);
-	pin_mask = BIT(pin);
-
-	K_SPINLOCK(&data->lock) {
-		reg_val = sys_read32(reg_addr);
-		if (open_drain) {
-			reg_val |= pin_mask;
-		} else {
-			reg_val &= ~pin_mask;
-		}
-		sys_write32(reg_val, reg_addr);
+	ret = syscon_update_bits(config->syscon, offset, BIT(pin),
+				 open_drain ? BIT(pin) : 0U);
+	if (ret < 0) {
+		LOG_ERR("Failed to set P%c%d open drain: %d", (config->port == 0) ? 'A' : 'B',
+			pin, ret);
+		return ret;
 	}
 
 	LOG_DBG("Configured P%c%d open drain: %s", (config->port == 0) ? 'A' : 'B', pin,
@@ -173,11 +159,6 @@ static int gpio_em32_pin_configure(const struct device *dev, gpio_pin_t pin, gpi
 	}
 #endif
 
-	/*
-	 * Guard the shared driver state (invert mask, clock tracking) and the
-	 * DATAOUT read-modify-write against preemption/ISR races on other pins
-	 * of the same port.
-	 */
 	K_SPINLOCK(&data->lock) {
 		if (flags & GPIO_ACTIVE_LOW) {
 			data->common.invert |= pin_mask;
@@ -238,13 +219,6 @@ static int gpio_em32_port_get_raw(const struct device *dev, uint32_t *value)
 	return 0;
 }
 
-/*
- * The EM32 GPIO block has no atomic data set/clear register: output data lives
- * only in DATAOUT. (Offsets 0x10/0x14 are OUTENSET/OUTENCLR — output-enable, not
- * data.) Every output update is therefore a read-modify-write on DATAOUT, guarded
- * with a per-port spinlock so a preemption, ISR or another core touching another
- * pin of the same port cannot lose an update.
- */
 static int gpio_em32_port_set_masked_raw(const struct device *dev, uint32_t mask, uint32_t value)
 {
 	struct gpio_em32_data *data = dev->data;
@@ -413,10 +387,13 @@ static int gpio_em32_pin_get_config(const struct device *dev, gpio_pin_t pin, gp
 	}
 
 	/* Pull resistor: read 2-bit PUPD field */
-	uint32_t pupd_addr = config->sysctrl_base + ((config->port == 0) ? EM32_IOPUPACTRL_OFFSET
-									 : EM32_IOPUPBCTRL_OFFSET);
+	uint32_t pupd_offset =
+		(config->port == 0) ? EM32_IOPUPACTRL_OFFSET : EM32_IOPUPBCTRL_OFFSET;
 	uint32_t pupd_shift = (uint32_t)pin * 2U;
-	uint32_t pupd_val = (sys_read32(pupd_addr) >> pupd_shift) & 0x3U;
+	uint32_t pupd_reg = 0U;
+
+	(void)syscon_read_reg(config->syscon, pupd_offset, &pupd_reg);
+	uint32_t pupd_val = (pupd_reg >> pupd_shift) & 0x3U;
 
 	if (pupd_val == EM32_GPIO_PUPD_PULLUP) {
 		result |= GPIO_PULL_UP;
@@ -425,10 +402,12 @@ static int gpio_em32_pin_get_config(const struct device *dev, gpio_pin_t pin, gp
 	}
 
 	/* Open-drain: read OD register */
-	uint32_t od_addr = config->sysctrl_base + ((config->port == 0) ? EM32_IOODEPACTRL_OFFSET
-								       : EM32_IOODEPBCTRL_OFFSET);
+	uint32_t od_offset =
+		(config->port == 0) ? EM32_IOODEPACTRL_OFFSET : EM32_IOODEPBCTRL_OFFSET;
+	uint32_t od_reg = 0U;
 
-	if (sys_read32(od_addr) & pin_mask) {
+	(void)syscon_read_reg(config->syscon, od_offset, &od_reg);
+	if (od_reg & pin_mask) {
 		result |= GPIO_OPEN_DRAIN;
 	}
 
@@ -460,6 +439,11 @@ static int gpio_em32_init(const struct device *dev)
 	int clk_ret;
 
 	LOG_INF("Initializing EM32 GPIO port %d at 0x%08X", config->port, config->base);
+
+	if (!device_is_ready(config->syscon)) {
+		LOG_ERR("sysctrl syscon device not ready");
+		return -ENODEV;
+	}
 
 	/* Enable GPIO clock first */
 	clk_ret = clock_control_on(clk_dev, UINT_TO_POINTER(config->clock_gate_id));
@@ -542,7 +526,7 @@ static int __maybe_unused gpio_em32_pm_action(const struct device *dev,
 	static const struct gpio_em32_config gpio_em32_config_##n = {                              \
 		.common = GPIO_COMMON_CONFIG_FROM_DT_INST(n),                                      \
 		.base = DT_INST_REG_ADDR(n),                                                       \
-		.sysctrl_base = DT_REG_ADDR(DT_NODELABEL(sysctrl)),                                \
+		.syscon = DEVICE_DT_GET(DT_NODELABEL(sysctrl)),                                    \
 		.clock_dev = DEVICE_DT_GET(DT_INST_CLOCKS_CTLR(n)),                                \
 		.clock_gate_id = DT_INST_CLOCKS_CELL_BY_IDX(n, 0, clk_id),                         \
 		.port = DT_INST_PROP(n, port_id),                                                  \

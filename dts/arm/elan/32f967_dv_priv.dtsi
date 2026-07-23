@@ -245,7 +245,10 @@
 };
 
 &sysctrl {
-	status = "disabled";
+	/* Enabled so the pinctrl and gpio drivers can serialize their shared
+	 * register writes through the syscon API (syscon_update_bits).
+	 */
+	status = "okay";
 };
 
 &pwrctrl {
