@@ -88,16 +88,13 @@ struct gpio_em32_data {
 static int em32_gpio_configure_pull(const struct device *dev, uint32_t pin, uint32_t pull)
 {
 	const struct gpio_em32_config *config = dev->config;
-	uint32_t offset =
-		(config->port == 0) ? EM32_IOPUPACTRL_OFFSET : EM32_IOPUPBCTRL_OFFSET;
+	uint32_t offset = (config->port == 0) ? EM32_IOPUPACTRL_OFFSET : EM32_IOPUPBCTRL_OFFSET;
 	uint32_t shift = pin * 2U; /* 2 bits per pin */
 	int ret;
 
-	ret = syscon_update_bits(config->syscon, offset, 0x3U << shift,
-				 (pull & 0x3U) << shift);
+	ret = syscon_update_bits(config->syscon, offset, 0x3U << shift, (pull & 0x3U) << shift);
 	if (ret < 0) {
-		LOG_ERR("Failed to set P%c%d pull: %d", (config->port == 0) ? 'A' : 'B', pin,
-			ret);
+		LOG_ERR("Failed to set P%c%d pull: %d", (config->port == 0) ? 'A' : 'B', pin, ret);
 		return ret;
 	}
 
@@ -108,15 +105,13 @@ static int em32_gpio_configure_pull(const struct device *dev, uint32_t pin, uint
 static int em32_gpio_configure_open_drain(const struct device *dev, uint32_t pin, bool open_drain)
 {
 	const struct gpio_em32_config *config = dev->config;
-	uint32_t offset =
-		(config->port == 0) ? EM32_IOODEPACTRL_OFFSET : EM32_IOODEPBCTRL_OFFSET;
+	uint32_t offset = (config->port == 0) ? EM32_IOODEPACTRL_OFFSET : EM32_IOODEPBCTRL_OFFSET;
 	int ret;
 
-	ret = syscon_update_bits(config->syscon, offset, BIT(pin),
-				 open_drain ? BIT(pin) : 0U);
+	ret = syscon_update_bits(config->syscon, offset, BIT(pin), open_drain ? BIT(pin) : 0U);
 	if (ret < 0) {
-		LOG_ERR("Failed to set P%c%d open drain: %d", (config->port == 0) ? 'A' : 'B',
-			pin, ret);
+		LOG_ERR("Failed to set P%c%d open drain: %d", (config->port == 0) ? 'A' : 'B', pin,
+			ret);
 		return ret;
 	}
 

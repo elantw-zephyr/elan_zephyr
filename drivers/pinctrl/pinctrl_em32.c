@@ -174,8 +174,7 @@ static int em32_configure_ioshare(uint8_t port, uint8_t pin_num, uint32_t alt_fu
 				return ret;
 			}
 
-			LOG_DBG("Configured %s on P%c%d", cfg->peripheral, 'A' + port,
-				pin_num);
+			LOG_DBG("Configured %s on P%c%d", cfg->peripheral, 'A' + port, pin_num);
 			config_found = true;
 			break;
 		}
