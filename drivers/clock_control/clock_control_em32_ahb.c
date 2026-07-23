@@ -125,11 +125,27 @@ static inline int ahb_em32_syscon_read_field(const struct device *syscon, uint32
 	return 0;
 }
 
+/* Read both factory trim fields from one INFOCTRL register access. */
+static int ahb_em32_syscon_read_mirc_trim(const struct device *syscon, uint32_t offset,
+					  uint32_t *tall, uint32_t *tv12)
+{
+	uint32_t reg;
+	int ret;
+
+	ret = syscon_read_reg(syscon, offset, &reg);
+	if (ret < 0) {
+		return ret;
+	}
+
+	*tall = FIELD_GET(MIRC_TALL_MASK, reg);
+	*tv12 = FIELD_GET(MIRC_TV12_MASK, reg);
+
+	return 0;
+}
+
 static inline int ahb_em32_syscon_write_field(const struct device *syscon, uint32_t offset,
 					      uint32_t mask, uint32_t value)
 {
-	int ret;
-
 	__ASSERT(mask != 0U, "mask must not be zero");
 
 	/* Optional: check value range */
@@ -138,25 +154,12 @@ static inline int ahb_em32_syscon_write_field(const struct device *syscon, uint3
 		return -EINVAL;
 	}
 
-	ret = syscon_update_bits(syscon, offset, mask, value << __builtin_ctz(mask));
-	if (ret < 0) {
-		LOG_ERR("Failed to write syscon field: %d", ret);
-		return ret;
-	}
-	return 0;
+	return syscon_update_bits(syscon, offset, mask, value << __builtin_ctz(mask));
 }
 
 #define AHB_EM32_SYSCON_WRITE_FIELD_OR_RETURN(_ret, _syscon, _offset, _mask, _value)               \
 	do {                                                                                       \
 		(_ret) = ahb_em32_syscon_write_field((_syscon), (_offset), (_mask), (_value));     \
-		if ((_ret) < 0) {                                                                  \
-			return (_ret);                                                             \
-		}                                                                                  \
-	} while (0)
-
-#define AHB_EM32_SYSCON_READ_FIELD_OR_RETURN(_ret, _syscon, _offset, _mask, _value)                \
-	do {                                                                                       \
-		(_ret) = ahb_em32_syscon_read_field((_syscon), (_offset), (_mask), (_value));      \
 		if ((_ret) < 0) {                                                                  \
 			return (_ret);                                                             \
 		}                                                                                  \
@@ -201,22 +204,28 @@ static inline int em32_clk_gate_write(const struct device *syscon, uint32_t gate
 		if (val == EM32_GATE_OPEN) {
 			ret = syscon_write_reg(syscon, SYSCTRL_CLK_GATE_REG_OFF,
 					       (uint32_t)EM32_GATE_OPEN);
-			if (ret < 0) {
-				return ret;
+			if (ret == 0) {
+				ret = syscon_write_reg(syscon, SYSCTRL_CLK_GATE_REG2_OFF,
+						       (uint32_t)EM32_GATE_OPEN);
 			}
-			return syscon_write_reg(syscon, SYSCTRL_CLK_GATE_REG2_OFF,
-						(uint32_t)EM32_GATE_OPEN);
 		} else {
 			/* Reject closing all gates to avoid system shutdown. */
 			LOG_WRN("Closing ALL gates is not supported");
 			return -ENOTSUP;
 		}
+	} else {
+		uint32_t bit = (gate_idx <= 31u) ? gate_idx : (gate_idx - 32u);
+		uint32_t off =
+			(gate_idx <= 31u) ? SYSCTRL_CLK_GATE_REG_OFF : SYSCTRL_CLK_GATE_REG2_OFF;
+
+		ret = syscon_update_bits(syscon, off, BIT(bit), (uint32_t)val);
 	}
 
-	uint32_t bit = (gate_idx <= 31u) ? gate_idx : (gate_idx - 32u);
-	uint32_t off = (gate_idx <= 31u) ? SYSCTRL_CLK_GATE_REG_OFF : SYSCTRL_CLK_GATE_REG2_OFF;
+	if (ret < 0) {
+		LOG_ERR("Clock gate update failed: %d", ret);
+	}
 
-	return syscon_update_bits(syscon, off, BIT(bit), (uint32_t)val);
+	return ret;
 }
 
 static inline int em32_clk_gate_open(const struct device *syscon, uint32_t gate_idx)
@@ -277,33 +286,27 @@ static int elan_em32_get_ahb_freq(const struct device *dev, uint32_t *freq)
 		return -EINVAL;
 	}
 
+	uint32_t sysctrl_reg;
 	uint32_t hclk_sel;
 
-	ret = ahb_em32_syscon_read_field(sysctrl_syscon, SYSCTRL_SYS_REG_CTRL_OFF,
-					 SYSCTRL_HCLK_SEL_MASK, &hclk_sel);
+	ret = syscon_read_reg(sysctrl_syscon, SYSCTRL_SYS_REG_CTRL_OFF, &sysctrl_reg);
 	if (ret < 0) {
 		return ret;
 	}
+
+	hclk_sel = FIELD_GET(SYSCTRL_HCLK_SEL_MASK, sysctrl_reg);
 	switch (hclk_sel) {
 	case 0x00:
 		main_freq_khz = irc_freq_khz;
 		break;
 
-	case 0x01: {
-		uint32_t xtal_hirc_sel;
-
-		ret = ahb_em32_syscon_read_field(sysctrl_syscon, SYSCTRL_SYS_REG_CTRL_OFF,
-						 SYSCTRL_XTAL_HIRC_SEL, &xtal_hirc_sel);
-		if (ret < 0) {
-			return ret;
-		}
-		if (xtal_hirc_sel) {
+	case 0x01:
+		if (FIELD_GET(SYSCTRL_XTAL_HIRC_SEL, sysctrl_reg)) {
 			main_freq_khz = 24000 * 5;
 		} else {
 			main_freq_khz = irc_pll_freq_khz;
 		}
 		break;
-	}
 
 	case 0x02:
 		main_freq_khz = 0xffffffffU;
@@ -314,14 +317,7 @@ static int elan_em32_get_ahb_freq(const struct device *dev, uint32_t *freq)
 		break;
 	}
 
-	uint32_t hclk_div;
-
-	ret = ahb_em32_syscon_read_field(sysctrl_syscon, SYSCTRL_SYS_REG_CTRL_OFF,
-					 SYSCTRL_HCLK_DIV_MASK, &hclk_div);
-	if (ret < 0) {
-		return ret;
-	}
-	main_freq_khz = main_freq_khz >> hclk_div;
+	main_freq_khz = main_freq_khz >> FIELD_GET(SYSCTRL_HCLK_DIV_MASK, sysctrl_reg);
 	ahb_freq_khz = main_freq_khz;
 
 	*freq = ahb_freq_khz;
@@ -342,7 +338,6 @@ static int elan_em32_set_ahb_freq(const struct device *dev)
 
 	ret = em32_clk_gate_open(sysctrl_syscon, EM32_GATE_PCLKG_AIP);
 	if (ret < 0) {
-		LOG_ERR("Failed to open AIP clock gate: %d", ret);
 		return ret;
 	}
 
@@ -384,94 +379,60 @@ static int elan_em32_set_ahb_freq(const struct device *dev)
 			b_pll = false;
 		}
 
+		uint32_t mirc_trim_offset;
 		uint32_t mirc_tall, mirc_tv12;
+		bool apply_mirc_trim = true;
 
 		switch (freq_src) {
 		case EM32_CLK_FREQ_IRCLOW12:
-			AHB_EM32_SYSCON_READ_FIELD_OR_RETURN(ret, infoctrl_syscon, MIRC_12M_R_2_OFF,
-							     MIRC_TALL_MASK, &mirc_tall);
-			AHB_EM32_SYSCON_READ_FIELD_OR_RETURN(ret, infoctrl_syscon, MIRC_12M_R_2_OFF,
-							     MIRC_TV12_MASK, &mirc_tv12);
-			AHB_EM32_SYSCON_WRITE_FIELD_OR_RETURN(
-				ret, clkctrl_syscon, CLKCTRL_MIRC_CTRL2_OFF,
-				CLKCTRL_MIRC2_TALL_MASK, mirc_tall & 0x3FF);
-			AHB_EM32_SYSCON_WRITE_FIELD_OR_RETURN(
-				ret, clkctrl_syscon, CLKCTRL_MIRC_CTRL2_OFF,
-				CLKCTRL_MIRC2_TV12_MASK, ~mirc_tv12 & 0x7);
+			mirc_trim_offset = MIRC_12M_R_2_OFF;
 			break;
 
 		case EM32_CLK_FREQ_IRCLOW16:
 		case EM32_CLK_FREQ_IRCHIGH64:
-			AHB_EM32_SYSCON_READ_FIELD_OR_RETURN(ret, infoctrl_syscon, MIRC_16M_2_OFF,
-							     MIRC_TALL_MASK, &mirc_tall);
-			AHB_EM32_SYSCON_READ_FIELD_OR_RETURN(ret, infoctrl_syscon, MIRC_16M_2_OFF,
-							     MIRC_TV12_MASK, &mirc_tv12);
-			AHB_EM32_SYSCON_WRITE_FIELD_OR_RETURN(
-				ret, clkctrl_syscon, CLKCTRL_MIRC_CTRL2_OFF,
-				CLKCTRL_MIRC2_TALL_MASK, mirc_tall & 0x3FF);
-			AHB_EM32_SYSCON_WRITE_FIELD_OR_RETURN(
-				ret, clkctrl_syscon, CLKCTRL_MIRC_CTRL2_OFF,
-				CLKCTRL_MIRC2_TV12_MASK, ~mirc_tv12 & 0x7);
+			mirc_trim_offset = MIRC_16M_2_OFF;
 			break;
 
 		case EM32_CLK_FREQ_IRCLOW20:
 		case EM32_CLK_FREQ_IRCHIGH80:
-			AHB_EM32_SYSCON_READ_FIELD_OR_RETURN(ret, infoctrl_syscon, MIRC_20M_2_OFF,
-							     MIRC_TALL_MASK, &mirc_tall);
-			AHB_EM32_SYSCON_READ_FIELD_OR_RETURN(ret, infoctrl_syscon, MIRC_20M_2_OFF,
-							     MIRC_TV12_MASK, &mirc_tv12);
-			AHB_EM32_SYSCON_WRITE_FIELD_OR_RETURN(
-				ret, clkctrl_syscon, CLKCTRL_MIRC_CTRL2_OFF,
-				CLKCTRL_MIRC2_TALL_MASK, mirc_tall & 0x3FF);
-			AHB_EM32_SYSCON_WRITE_FIELD_OR_RETURN(
-				ret, clkctrl_syscon, CLKCTRL_MIRC_CTRL2_OFF,
-				CLKCTRL_MIRC2_TV12_MASK, ~mirc_tv12 & 0x7);
+			mirc_trim_offset = MIRC_20M_2_OFF;
 			break;
 
 		case EM32_CLK_FREQ_IRCLOW24:
 		case EM32_CLK_FREQ_IRCHIGH96:
-			AHB_EM32_SYSCON_READ_FIELD_OR_RETURN(ret, infoctrl_syscon, MIRC_24M_2_OFF,
-							     MIRC_TALL_MASK, &mirc_tall);
-			AHB_EM32_SYSCON_READ_FIELD_OR_RETURN(ret, infoctrl_syscon, MIRC_24M_2_OFF,
-							     MIRC_TV12_MASK, &mirc_tv12);
-			AHB_EM32_SYSCON_WRITE_FIELD_OR_RETURN(
-				ret, clkctrl_syscon, CLKCTRL_MIRC_CTRL2_OFF,
-				CLKCTRL_MIRC2_TALL_MASK, mirc_tall & 0x3FF);
-			AHB_EM32_SYSCON_WRITE_FIELD_OR_RETURN(
-				ret, clkctrl_syscon, CLKCTRL_MIRC_CTRL2_OFF,
-				CLKCTRL_MIRC2_TV12_MASK, ~mirc_tv12 & 0x7);
+			mirc_trim_offset = MIRC_24M_2_OFF;
 			break;
 
 		case EM32_CLK_FREQ_IRCLOW28:
 		case EM32_CLK_FREQ_IRCHIGH112:
-			AHB_EM32_SYSCON_READ_FIELD_OR_RETURN(ret, infoctrl_syscon, MIRC_28M_2_OFF,
-							     MIRC_TALL_MASK, &mirc_tall);
-			AHB_EM32_SYSCON_READ_FIELD_OR_RETURN(ret, infoctrl_syscon, MIRC_28M_2_OFF,
-							     MIRC_TV12_MASK, &mirc_tv12);
-			AHB_EM32_SYSCON_WRITE_FIELD_OR_RETURN(
-				ret, clkctrl_syscon, CLKCTRL_MIRC_CTRL2_OFF,
-				CLKCTRL_MIRC2_TALL_MASK, mirc_tall & 0x3FF);
-			AHB_EM32_SYSCON_WRITE_FIELD_OR_RETURN(
-				ret, clkctrl_syscon, CLKCTRL_MIRC_CTRL2_OFF,
-				CLKCTRL_MIRC2_TV12_MASK, ~mirc_tv12 & 0x7);
+			mirc_trim_offset = MIRC_28M_2_OFF;
 			break;
 
 		case EM32_CLK_FREQ_IRCLOW32:
 		case EM32_CLK_FREQ_IRCHIGH128:
-			AHB_EM32_SYSCON_READ_FIELD_OR_RETURN(ret, infoctrl_syscon, MIRC_32M_2_OFF,
-							     MIRC_TALL_MASK, &mirc_tall);
-			AHB_EM32_SYSCON_READ_FIELD_OR_RETURN(ret, infoctrl_syscon, MIRC_32M_2_OFF,
-							     MIRC_TV12_MASK, &mirc_tv12);
-			AHB_EM32_SYSCON_WRITE_FIELD_OR_RETURN(
-				ret, clkctrl_syscon, CLKCTRL_MIRC_CTRL2_OFF,
-				CLKCTRL_MIRC2_TALL_MASK, mirc_tall & 0x3FF);
-			AHB_EM32_SYSCON_WRITE_FIELD_OR_RETURN(
-				ret, clkctrl_syscon, CLKCTRL_MIRC_CTRL2_OFF,
-				CLKCTRL_MIRC2_TV12_MASK, ~mirc_tv12 & 0x7);
+			mirc_trim_offset = MIRC_32M_2_OFF;
 			break;
 
 		default:
+			apply_mirc_trim = false;
 			break;
+		}
+
+		if (apply_mirc_trim) {
+			ret = ahb_em32_syscon_read_mirc_trim(infoctrl_syscon, mirc_trim_offset,
+							     &mirc_tall, &mirc_tv12);
+			if (ret < 0) {
+				return ret;
+			}
+
+			ret = syscon_update_bits(
+				clkctrl_syscon, CLKCTRL_MIRC_CTRL2_OFF,
+				CLKCTRL_MIRC2_TALL_MASK | CLKCTRL_MIRC2_TV12_MASK,
+				FIELD_PREP(CLKCTRL_MIRC2_TALL_MASK, mirc_tall & 0x3FF) |
+					FIELD_PREP(CLKCTRL_MIRC2_TV12_MASK, ~mirc_tv12 & 0x7));
+			if (ret < 0) {
+				return ret;
+			}
 		}
 
 		delay_us(100);
@@ -575,17 +536,11 @@ static int elan_em32_ahb_clock_control_on(const struct device *dev, clock_contro
 {
 	const struct elan_em32_ahb_clock_control_config *cfg = dev->config;
 	uint32_t clk_grp = POINTER_TO_UINT(sys);
-	int ret;
 
 	/* API-level "ALL" */
 	if (sys == CLOCK_CONTROL_SUBSYS_ALL || clk_grp == EM32_GATE_PCLKG_ALL) {
 		/* Enabling all clock == open gate. */
-		ret = em32_clk_gate_open(cfg->sysctrl_syscon, EM32_GATE_PCLKG_ALL);
-		if (ret < 0) {
-			LOG_ERR("Failed to open all clock gates: %d", ret);
-			return ret;
-		}
-		return 0;
+		return em32_clk_gate_open(cfg->sysctrl_syscon, EM32_GATE_PCLKG_ALL);
 	}
 
 	if (clk_grp == EM32_GATE_NONE) {
@@ -600,19 +555,13 @@ static int elan_em32_ahb_clock_control_on(const struct device *dev, clock_contro
 	}
 
 	/* Enabling a clock == open gate (clear the bit). */
-	ret = em32_clk_gate_open(cfg->sysctrl_syscon, clk_grp);
-	if (ret < 0) {
-		LOG_ERR("Failed to open clock gate %u: %d", clk_grp, ret);
-		return ret;
-	}
-	return 0;
+	return em32_clk_gate_open(cfg->sysctrl_syscon, clk_grp);
 }
 
 static int elan_em32_ahb_clock_control_off(const struct device *dev, clock_control_subsys_t sys)
 {
 	const struct elan_em32_ahb_clock_control_config *cfg = dev->config;
 	uint32_t clk_grp = POINTER_TO_UINT(sys);
-	int ret;
 
 	/* Do not support closing ALL clocks; reject explicitly. */
 	if (sys == CLOCK_CONTROL_SUBSYS_ALL || clk_grp == EM32_GATE_PCLKG_ALL) {
@@ -630,12 +579,7 @@ static int elan_em32_ahb_clock_control_off(const struct device *dev, clock_contr
 	}
 
 	/* Disabling a clock == close gate (set the bit). */
-	ret = em32_clk_gate_close(cfg->sysctrl_syscon, clk_grp);
-	if (ret < 0) {
-		LOG_ERR("Failed to close clock gate %u: %d", clk_grp, ret);
-		return ret;
-	}
-	return 0;
+	return em32_clk_gate_close(cfg->sysctrl_syscon, clk_grp);
 }
 
 static int elan_em32_ahb_clock_control_get_rate(const struct device *dev,
@@ -743,6 +687,7 @@ static int elan_em32_ahb_clock_control_init(const struct device *dev)
 
 	ret = elan_em32_set_ahb_freq(dev);
 	if (ret) {
+		LOG_ERR("AHB clock setup failed: %d", ret);
 		return ret;
 	}
 
