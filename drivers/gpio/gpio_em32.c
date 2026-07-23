@@ -364,6 +364,7 @@ static int gpio_em32_pin_get_config(const struct device *dev, gpio_pin_t pin, gp
 	const struct gpio_em32_config *config = dev->config;
 	gpio_flags_t result = 0;
 	uint32_t pin_mask = BIT(pin);
+	int ret;
 
 	if (pin >= 16U) {
 		return -EINVAL;
@@ -392,7 +393,10 @@ static int gpio_em32_pin_get_config(const struct device *dev, gpio_pin_t pin, gp
 	uint32_t pupd_shift = (uint32_t)pin * 2U;
 	uint32_t pupd_reg = 0U;
 
-	(void)syscon_read_reg(config->syscon, pupd_offset, &pupd_reg);
+	ret = syscon_read_reg(config->syscon, pupd_offset, &pupd_reg);
+	if (ret < 0) {
+		return ret;
+	}
 	uint32_t pupd_val = (pupd_reg >> pupd_shift) & 0x3U;
 
 	if (pupd_val == EM32_GPIO_PUPD_PULLUP) {
@@ -406,7 +410,10 @@ static int gpio_em32_pin_get_config(const struct device *dev, gpio_pin_t pin, gp
 		(config->port == 0) ? EM32_IOODEPACTRL_OFFSET : EM32_IOODEPBCTRL_OFFSET;
 	uint32_t od_reg = 0U;
 
-	(void)syscon_read_reg(config->syscon, od_offset, &od_reg);
+	ret = syscon_read_reg(config->syscon, od_offset, &od_reg);
+	if (ret < 0) {
+		return ret;
+	}
 	if (od_reg & pin_mask) {
 		result |= GPIO_OPEN_DRAIN;
 	}
