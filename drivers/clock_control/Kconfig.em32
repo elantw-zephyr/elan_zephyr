@@ -33,3 +33,30 @@ config EM32_DELAY_SWITCH_PRIORITY
 	  clock init priority changes.
 
 endif # CLOCK_CONTROL_EM32_AHB || CLOCK_CONTROL_EM32_APB
+
+if CLOCK_CONTROL_EM32_APB
+
+config CLOCK_CONTROL_EM32_APB_INIT_PRIORITY
+	int "EM32 APB clock control initialization priority"
+	default 53
+	depends on CLOCK_CONTROL_EM32_APB
+	help
+	  Initialization priority for the EM32 APB clock control driver.
+	  This must be greater than CLOCK_CONTROL_EM32_AHB_INIT_PRIORITY
+	  since the APB clock depends on the AHB clock.
+
+endif # CLOCK_CONTROL_EM32_APB
+
+if CLOCK_CONTROL_EM32_AHB
+
+config CLOCK_CONTROL_EM32_AHB_INIT_PRIORITY
+	int "EM32 AHB clock control initialization priority"
+	default 52
+	depends on CLOCK_CONTROL_EM32_AHB
+	help
+	  Initialization priority for the EM32 AHB clock control driver.
+	  This driver must initialize after syscon.
+	  Other EM32 drivers that depend on the AHB clock controller
+	  (such as APB clock control and GPIO) must initialize after this driver.
+
+endif # CLOCK_CONTROL_EM32_AHB

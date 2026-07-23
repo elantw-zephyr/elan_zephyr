@@ -10,3 +10,12 @@ config UART_EM32
 	select PINCTRL
 	help
 	  This option enables the elan em32 serial driver.
+
+config UART_EM32_INIT_PRIORITY
+	int "EM32 UART initialization priority"
+	default 65
+	depends on UART_EM32
+	help
+	  Initialization priority for the EM32 UART driver.
+	  This must be greater than CLOCK_CONTROL_EM32_APB_INIT_PRIORITY since
+	  UART depends on the clock driver and pinctrl.
