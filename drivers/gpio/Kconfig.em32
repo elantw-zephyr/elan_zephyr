@@ -18,3 +18,13 @@ config GPIO_EM32
 	  - Pull-up/pull-down resistors
 	  - Interrupt generation (edge/level triggered)
 	  - Alternate function selection
+
+# TODO: this is a workaround for upstream PR
+# The pinctrl and gpio drivers reach the shared sysctrl (syscon@40030000)
+# registers through the syscon API, so syscon must initialize before those
+# consumers — GPIO_INIT_PRIORITY defaults to 40. The upstream syscon default of
+# 50 would run too late and make the drivers' device_is_ready(syscon) check
+# fail, so lower it here.
+config SYSCON_INIT_PRIORITY
+	default 30
+	depends on SYSCON
