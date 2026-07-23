@@ -260,6 +260,11 @@
 	status = "okay";
 };
 
+&infoctrl {
+	/* Enable INFOCTRL syscon for factory trim value reads. */
+	status = "okay";
+};
+
 &spi1_cs_pb0 {
 	drive-strength = <1>;
 };

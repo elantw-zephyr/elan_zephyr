@@ -31,7 +31,7 @@ BUILD_ASSERT(CONFIG_SYSCON_INIT_PRIORITY < CONFIG_CLOCK_CONTROL_EM32_AHB_INIT_PR
 struct elan_em32_ahb_clock_control_config {
 	const struct device *sysctrl_syscon;
 	const struct device *clkctrl_syscon;
-	mm_reg_t infoctrl_base;
+	const struct device *infoctrl_syscon;
 	uint32_t clock_source;
 	uint32_t clock_frequency;
 	uint32_t clock_divider;
@@ -110,16 +110,7 @@ static inline void delay_us(uint32_t us)
 	delay_us_impl(us);
 }
 
-static inline uint32_t ahb_em32_read_field(mm_reg_t base, uint32_t offset, uint32_t mask)
-{
-	uint32_t reg;
-
-	reg = sys_read32(base + offset);
-
-	return FIELD_GET(mask, reg);
-}
-
-/* Syscon-based helpers for SYSCTRL and CLKCTRL register access */
+/* Syscon-based helpers for SYSCTRL, CLKCTRL and INFOCTRL register access */
 static inline int ahb_em32_syscon_read_field(const struct device *syscon, uint32_t offset,
 					     uint32_t mask, uint32_t *value)
 {
@@ -158,6 +149,14 @@ static inline int ahb_em32_syscon_write_field(const struct device *syscon, uint3
 #define AHB_EM32_SYSCON_WRITE_FIELD_OR_RETURN(_ret, _syscon, _offset, _mask, _value)               \
 	do {                                                                                       \
 		(_ret) = ahb_em32_syscon_write_field((_syscon), (_offset), (_mask), (_value));     \
+		if ((_ret) < 0) {                                                                  \
+			return (_ret);                                                             \
+		}                                                                                  \
+	} while (0)
+
+#define AHB_EM32_SYSCON_READ_FIELD_OR_RETURN(_ret, _syscon, _offset, _mask, _value)                \
+	do {                                                                                       \
+		(_ret) = ahb_em32_syscon_read_field((_syscon), (_offset), (_mask), (_value));      \
 		if ((_ret) < 0) {                                                                  \
 			return (_ret);                                                             \
 		}                                                                                  \
@@ -334,7 +333,7 @@ static int elan_em32_set_ahb_freq(const struct device *dev)
 	const struct elan_em32_ahb_clock_control_config *config = dev->config;
 	const struct device *sysctrl_syscon = config->sysctrl_syscon;
 	const struct device *clkctrl_syscon = config->clkctrl_syscon;
-	mm_reg_t infoctrl_base = config->infoctrl_base;
+	const struct device *infoctrl_syscon = config->infoctrl_syscon;
 	uint32_t clk_src = config->clock_source;
 	uint32_t freq_src = config->clock_frequency;
 	uint32_t pre_div = config->clock_divider;
@@ -389,10 +388,10 @@ static int elan_em32_set_ahb_freq(const struct device *dev)
 
 		switch (freq_src) {
 		case EM32_CLK_FREQ_IRCLOW12:
-			mirc_tall = ahb_em32_read_field(infoctrl_base, MIRC_12M_R_2_OFF,
-							MIRC_TALL_MASK);
-			mirc_tv12 = ahb_em32_read_field(infoctrl_base, MIRC_12M_R_2_OFF,
-							MIRC_TV12_MASK);
+			AHB_EM32_SYSCON_READ_FIELD_OR_RETURN(ret, infoctrl_syscon, MIRC_12M_R_2_OFF,
+							     MIRC_TALL_MASK, &mirc_tall);
+			AHB_EM32_SYSCON_READ_FIELD_OR_RETURN(ret, infoctrl_syscon, MIRC_12M_R_2_OFF,
+							     MIRC_TV12_MASK, &mirc_tv12);
 			AHB_EM32_SYSCON_WRITE_FIELD_OR_RETURN(
 				ret, clkctrl_syscon, CLKCTRL_MIRC_CTRL2_OFF,
 				CLKCTRL_MIRC2_TALL_MASK, mirc_tall & 0x3FF);
@@ -403,10 +402,10 @@ static int elan_em32_set_ahb_freq(const struct device *dev)
 
 		case EM32_CLK_FREQ_IRCLOW16:
 		case EM32_CLK_FREQ_IRCHIGH64:
-			mirc_tall =
-				ahb_em32_read_field(infoctrl_base, MIRC_16M_2_OFF, MIRC_TALL_MASK);
-			mirc_tv12 =
-				ahb_em32_read_field(infoctrl_base, MIRC_16M_2_OFF, MIRC_TV12_MASK);
+			AHB_EM32_SYSCON_READ_FIELD_OR_RETURN(ret, infoctrl_syscon, MIRC_16M_2_OFF,
+							     MIRC_TALL_MASK, &mirc_tall);
+			AHB_EM32_SYSCON_READ_FIELD_OR_RETURN(ret, infoctrl_syscon, MIRC_16M_2_OFF,
+							     MIRC_TV12_MASK, &mirc_tv12);
 			AHB_EM32_SYSCON_WRITE_FIELD_OR_RETURN(
 				ret, clkctrl_syscon, CLKCTRL_MIRC_CTRL2_OFF,
 				CLKCTRL_MIRC2_TALL_MASK, mirc_tall & 0x3FF);
@@ -417,10 +416,10 @@ static int elan_em32_set_ahb_freq(const struct device *dev)
 
 		case EM32_CLK_FREQ_IRCLOW20:
 		case EM32_CLK_FREQ_IRCHIGH80:
-			mirc_tall =
-				ahb_em32_read_field(infoctrl_base, MIRC_20M_2_OFF, MIRC_TALL_MASK);
-			mirc_tv12 =
-				ahb_em32_read_field(infoctrl_base, MIRC_20M_2_OFF, MIRC_TV12_MASK);
+			AHB_EM32_SYSCON_READ_FIELD_OR_RETURN(ret, infoctrl_syscon, MIRC_20M_2_OFF,
+							     MIRC_TALL_MASK, &mirc_tall);
+			AHB_EM32_SYSCON_READ_FIELD_OR_RETURN(ret, infoctrl_syscon, MIRC_20M_2_OFF,
+							     MIRC_TV12_MASK, &mirc_tv12);
 			AHB_EM32_SYSCON_WRITE_FIELD_OR_RETURN(
 				ret, clkctrl_syscon, CLKCTRL_MIRC_CTRL2_OFF,
 				CLKCTRL_MIRC2_TALL_MASK, mirc_tall & 0x3FF);
@@ -431,10 +430,10 @@ static int elan_em32_set_ahb_freq(const struct device *dev)
 
 		case EM32_CLK_FREQ_IRCLOW24:
 		case EM32_CLK_FREQ_IRCHIGH96:
-			mirc_tall =
-				ahb_em32_read_field(infoctrl_base, MIRC_24M_2_OFF, MIRC_TALL_MASK);
-			mirc_tv12 =
-				ahb_em32_read_field(infoctrl_base, MIRC_24M_2_OFF, MIRC_TV12_MASK);
+			AHB_EM32_SYSCON_READ_FIELD_OR_RETURN(ret, infoctrl_syscon, MIRC_24M_2_OFF,
+							     MIRC_TALL_MASK, &mirc_tall);
+			AHB_EM32_SYSCON_READ_FIELD_OR_RETURN(ret, infoctrl_syscon, MIRC_24M_2_OFF,
+							     MIRC_TV12_MASK, &mirc_tv12);
 			AHB_EM32_SYSCON_WRITE_FIELD_OR_RETURN(
 				ret, clkctrl_syscon, CLKCTRL_MIRC_CTRL2_OFF,
 				CLKCTRL_MIRC2_TALL_MASK, mirc_tall & 0x3FF);
@@ -445,10 +444,10 @@ static int elan_em32_set_ahb_freq(const struct device *dev)
 
 		case EM32_CLK_FREQ_IRCLOW28:
 		case EM32_CLK_FREQ_IRCHIGH112:
-			mirc_tall =
-				ahb_em32_read_field(infoctrl_base, MIRC_28M_2_OFF, MIRC_TALL_MASK);
-			mirc_tv12 =
-				ahb_em32_read_field(infoctrl_base, MIRC_28M_2_OFF, MIRC_TV12_MASK);
+			AHB_EM32_SYSCON_READ_FIELD_OR_RETURN(ret, infoctrl_syscon, MIRC_28M_2_OFF,
+							     MIRC_TALL_MASK, &mirc_tall);
+			AHB_EM32_SYSCON_READ_FIELD_OR_RETURN(ret, infoctrl_syscon, MIRC_28M_2_OFF,
+							     MIRC_TV12_MASK, &mirc_tv12);
 			AHB_EM32_SYSCON_WRITE_FIELD_OR_RETURN(
 				ret, clkctrl_syscon, CLKCTRL_MIRC_CTRL2_OFF,
 				CLKCTRL_MIRC2_TALL_MASK, mirc_tall & 0x3FF);
@@ -459,10 +458,10 @@ static int elan_em32_set_ahb_freq(const struct device *dev)
 
 		case EM32_CLK_FREQ_IRCLOW32:
 		case EM32_CLK_FREQ_IRCHIGH128:
-			mirc_tall =
-				ahb_em32_read_field(infoctrl_base, MIRC_32M_2_OFF, MIRC_TALL_MASK);
-			mirc_tv12 =
-				ahb_em32_read_field(infoctrl_base, MIRC_32M_2_OFF, MIRC_TV12_MASK);
+			AHB_EM32_SYSCON_READ_FIELD_OR_RETURN(ret, infoctrl_syscon, MIRC_32M_2_OFF,
+							     MIRC_TALL_MASK, &mirc_tall);
+			AHB_EM32_SYSCON_READ_FIELD_OR_RETURN(ret, infoctrl_syscon, MIRC_32M_2_OFF,
+							     MIRC_TV12_MASK, &mirc_tv12);
 			AHB_EM32_SYSCON_WRITE_FIELD_OR_RETURN(
 				ret, clkctrl_syscon, CLKCTRL_MIRC_CTRL2_OFF,
 				CLKCTRL_MIRC2_TALL_MASK, mirc_tall & 0x3FF);
@@ -736,8 +735,9 @@ static int elan_em32_ahb_clock_control_init(const struct device *dev)
 
 	const struct elan_em32_ahb_clock_control_config *config = dev->config;
 
-	if (!device_is_ready(config->sysctrl_syscon) || !device_is_ready(config->clkctrl_syscon)) {
-		LOG_ERR("SYSCTRL or CLKCTRL syscon device is not ready");
+	if (!device_is_ready(config->sysctrl_syscon) || !device_is_ready(config->clkctrl_syscon) ||
+	    !device_is_ready(config->infoctrl_syscon)) {
+		LOG_ERR("SYSCTRL, CLKCTRL or INFOCTRL syscon device is not ready");
 		return -ENODEV;
 	}
 
@@ -752,7 +752,7 @@ static int elan_em32_ahb_clock_control_init(const struct device *dev)
 static const struct elan_em32_ahb_clock_control_config em32_ahb_config = {
 	.sysctrl_syscon = DEVICE_DT_GET(DT_NODELABEL(sysctrl)),
 	.clkctrl_syscon = DEVICE_DT_GET(DT_NODELABEL(clkctrl)),
-	.infoctrl_base = DT_REG_ADDR(DT_NODELABEL(infoctrl)),
+	.infoctrl_syscon = DEVICE_DT_GET(DT_NODELABEL(infoctrl)),
 	.clock_source = DT_PROP(DT_NODELABEL(clk_ahb), clock_source),
 	.clock_frequency = DT_PROP(DT_NODELABEL(clk_ahb), clock_frequency),
 	.clock_divider = DT_PROP(DT_NODELABEL(clk_ahb), clock_divider),
