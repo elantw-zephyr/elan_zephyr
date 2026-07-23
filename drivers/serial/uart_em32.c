@@ -12,16 +12,25 @@
 #include <zephyr/drivers/pinctrl.h>
 #include <soc.h>
 
-#define UART_STATE_TX_BUSY_MASK        BIT(0)
-#define UART_STATE_RX_RDY_MASK         BIT(1)
-#define UART_STATE_RX_BUF_OVERRUN_MASK BIT(3)
-
 /* EM32 UART register offsets - corrected per spec */
 #define UART_DATA_OFFSET      0x00
 #define UART_STATE_OFFSET     0x04
 #define UART_CTRL_OFFSET      0x08
 #define UART_INTSTACLR_OFFSET 0x0C
 #define UART_BAUDDIV_OFFSET   0x10
+
+/* UART register bit definitions */
+#define UART_STATE_TX_BUSY_MASK        BIT(0)
+#define UART_STATE_RX_RDY_MASK         BIT(1)
+#define UART_STATE_RX_BUF_OVERRUN_MASK BIT(3)
+
+#define UART_CTRL_TX_ENABLE BIT(0)
+#define UART_CTRL_RX_ENABLE BIT(1)
+#define UART_CTRL_ENABLE    (UART_CTRL_TX_ENABLE | UART_CTRL_RX_ENABLE)
+
+#define UART_INTSTACLR_ALL (BIT(0) | BIT(1) | BIT(2) | BIT(3))
+
+#define UART_BAUDDIV_MIN 16
 
 LOG_MODULE_REGISTER(uart_em32, CONFIG_UART_LOG_LEVEL);
 
@@ -57,6 +66,7 @@ static int uart_em32_uart_poll_in(const struct device *dev, unsigned char *p_cha
 		return -1;
 	}
 
+	/* Mask to 8-bit data */
 	*p_char = uart_em32_read(dev, UART_DATA_OFFSET) & 0xFF;
 	return 0;
 }
@@ -127,13 +137,13 @@ static int uart_em32_init(const struct device *dev)
 
 	bauddiv = (apb_clk_rate + (baudrate / 2)) / baudrate;
 
-	if (bauddiv < 16) {
-		bauddiv = 16;
+	if (bauddiv < UART_BAUDDIV_MIN) {
+		bauddiv = UART_BAUDDIV_MIN;
 	}
 
 	uart_em32_write(dev, UART_BAUDDIV_OFFSET, bauddiv);
-	uart_em32_write(dev, UART_INTSTACLR_OFFSET, 0xF);
-	uart_em32_write(dev, UART_CTRL_OFFSET, 0x3);
+	uart_em32_write(dev, UART_INTSTACLR_OFFSET, UART_INTSTACLR_ALL);
+	uart_em32_write(dev, UART_CTRL_OFFSET, UART_CTRL_ENABLE);
 
 	return 0;
 }
