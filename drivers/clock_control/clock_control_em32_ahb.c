@@ -352,21 +352,12 @@ static int elan_em32_set_ahb_freq(const struct device *dev)
 						   SYSCTRL_HCLK_DIV_MASK, pre_div);
 	}
 
-	ret = ahb_em32_syscon_write_field(sysctrl_syscon, SYSCTRL_MISC_REG_CTRL_OFF,
-					  SYSCTRL_WAIT_COUNT_PASS_MASK, 0x0a);
-	if (ret < 0) {
-		return ret;
-	}
-	ret = ahb_em32_syscon_write_field(sysctrl_syscon, SYSCTRL_MISC_REG_CTRL_OFF,
-					  SYSCTRL_WAIT_COUNT_MASK, 0x03);
-	if (ret < 0) {
-		return ret;
-	}
-	ret = ahb_em32_syscon_write_field(sysctrl_syscon, SYSCTRL_MISC_REG_CTRL_OFF,
-					  SYSCTRL_WAIT_COUNT_SET, 0x01);
-	if (ret < 0) {
-		return ret;
-	}
+	AHB_EM32_SYSCON_WRITE_FIELD_OR_RETURN(ret, sysctrl_syscon, SYSCTRL_MISC_REG_CTRL_OFF,
+					      SYSCTRL_WAIT_COUNT_PASS_MASK, 0x0a);
+	AHB_EM32_SYSCON_WRITE_FIELD_OR_RETURN(ret, sysctrl_syscon, SYSCTRL_MISC_REG_CTRL_OFF,
+					      SYSCTRL_WAIT_COUNT_MASK, 0x03);
+	AHB_EM32_SYSCON_WRITE_FIELD_OR_RETURN(ret, sysctrl_syscon, SYSCTRL_MISC_REG_CTRL_OFF,
+					      SYSCTRL_WAIT_COUNT_SET, 0x01);
 
 	uint32_t hclk_sel;
 
@@ -376,11 +367,8 @@ static int elan_em32_set_ahb_freq(const struct device *dev)
 		return ret;
 	}
 	if (hclk_sel == 0x01) {
-		ret = ahb_em32_syscon_write_field(sysctrl_syscon, SYSCTRL_SYS_REG_CTRL_OFF,
-						  SYSCTRL_HCLK_SEL_MASK, 0x00);
-		if (ret < 0) {
-			return ret;
-		}
+		AHB_EM32_SYSCON_WRITE_FIELD_OR_RETURN(ret, sysctrl_syscon, SYSCTRL_SYS_REG_CTRL_OFF,
+						      SYSCTRL_HCLK_SEL_MASK, 0x00);
 		delay_us(100);
 		AHB_EM32_SYSCON_WRITE_FIELD_OR_RETURN(ret, clkctrl_syscon, CLKCTRL_SYS_PLL_CTRL_OFF,
 						      CLKCTRL_SYS_PLL_PD, 0x01);
@@ -388,11 +376,8 @@ static int elan_em32_set_ahb_freq(const struct device *dev)
 	}
 
 	if (clk_src == EM32_CLK_SRC_EXTERNAL1) {
-		ret = ahb_em32_syscon_write_field(sysctrl_syscon, SYSCTRL_SYS_REG_CTRL_OFF,
-						  SYSCTRL_HCLK_SEL_MASK, 0x02);
-		if (ret < 0) {
-			return ret;
-		}
+		AHB_EM32_SYSCON_WRITE_FIELD_OR_RETURN(ret, sysctrl_syscon, SYSCTRL_SYS_REG_CTRL_OFF,
+						      SYSCTRL_HCLK_SEL_MASK, 0x02);
 	} else {
 		if (freq_src >> 4) {
 			b_pll = true;
@@ -493,11 +478,8 @@ static int elan_em32_set_ahb_freq(const struct device *dev)
 		delay_us(100);
 		AHB_EM32_SYSCON_WRITE_FIELD_OR_RETURN(ret, clkctrl_syscon, CLKCTRL_MIRC_CTRL_OFF,
 						      CLKCTRL_MIRC_RCM_MASK, freq_src & 0x0f);
-		ret = ahb_em32_syscon_write_field(sysctrl_syscon, SYSCTRL_SYS_REG_CTRL_OFF,
-						  SYSCTRL_XTAL_HIRC_SEL, 0x00);
-		if (ret < 0) {
-			return ret;
-		}
+		AHB_EM32_SYSCON_WRITE_FIELD_OR_RETURN(ret, sysctrl_syscon, SYSCTRL_SYS_REG_CTRL_OFF,
+						      SYSCTRL_XTAL_HIRC_SEL, 0x00);
 
 		if (b_pll) {
 			switch (freq_src) {
@@ -552,18 +534,14 @@ static int elan_em32_set_ahb_freq(const struct device *dev)
 				}
 			} while (pll_stable == 0);
 			delay_us(1);
-			ret = ahb_em32_syscon_write_field(sysctrl_syscon, SYSCTRL_SYS_REG_CTRL_OFF,
-							  SYSCTRL_HCLK_SEL_MASK, 0x01);
-			if (ret < 0) {
-				return ret;
-			}
+			AHB_EM32_SYSCON_WRITE_FIELD_OR_RETURN(ret, sysctrl_syscon,
+							      SYSCTRL_SYS_REG_CTRL_OFF,
+							      SYSCTRL_HCLK_SEL_MASK, 0x01);
 			delay_us(1);
 		} else {
-			ret = ahb_em32_syscon_write_field(sysctrl_syscon, SYSCTRL_SYS_REG_CTRL_OFF,
-							  SYSCTRL_HCLK_SEL_MASK, 0x00);
-			if (ret < 0) {
-				return ret;
-			}
+			AHB_EM32_SYSCON_WRITE_FIELD_OR_RETURN(ret, sysctrl_syscon,
+							      SYSCTRL_SYS_REG_CTRL_OFF,
+							      SYSCTRL_HCLK_SEL_MASK, 0x00);
 			delay_us(100);
 			AHB_EM32_SYSCON_WRITE_FIELD_OR_RETURN(ret, clkctrl_syscon,
 							      CLKCTRL_SYS_PLL_CTRL_OFF,
@@ -572,31 +550,19 @@ static int elan_em32_set_ahb_freq(const struct device *dev)
 	}
 
 	if (pre_div == EM32_AHB_CLK_DIV128) {
-		ret = ahb_em32_syscon_write_field(sysctrl_syscon, SYSCTRL_SYS_REG_CTRL_OFF,
-						  SYSCTRL_HCLK_DIV_MASK, pre_div - 1);
+		AHB_EM32_SYSCON_WRITE_FIELD_OR_RETURN(ret, sysctrl_syscon, SYSCTRL_SYS_REG_CTRL_OFF,
+						      SYSCTRL_HCLK_DIV_MASK, pre_div - 1);
 	} else {
-		ret = ahb_em32_syscon_write_field(sysctrl_syscon, SYSCTRL_SYS_REG_CTRL_OFF,
-						  SYSCTRL_HCLK_DIV_MASK, pre_div + 1);
-	}
-	if (ret < 0) {
-		return ret;
+		AHB_EM32_SYSCON_WRITE_FIELD_OR_RETURN(ret, sysctrl_syscon, SYSCTRL_SYS_REG_CTRL_OFF,
+						      SYSCTRL_HCLK_DIV_MASK, pre_div + 1);
 	}
 
-	ret = ahb_em32_syscon_write_field(sysctrl_syscon, SYSCTRL_MISC_REG_CTRL_OFF,
-					  SYSCTRL_WAIT_COUNT_SET, 0x00);
-	if (ret < 0) {
-		return ret;
-	}
-	ret = ahb_em32_syscon_write_field(sysctrl_syscon, SYSCTRL_MISC_REG_CTRL_OFF,
-					  SYSCTRL_WAIT_COUNT_PASS_MASK, 0x00);
-	if (ret < 0) {
-		return ret;
-	}
-	ret = ahb_em32_syscon_write_field(sysctrl_syscon, SYSCTRL_SYS_REG_CTRL_OFF,
-					  SYSCTRL_HCLK_DIV_MASK, pre_div);
-	if (ret < 0) {
-		return ret;
-	}
+	AHB_EM32_SYSCON_WRITE_FIELD_OR_RETURN(ret, sysctrl_syscon, SYSCTRL_MISC_REG_CTRL_OFF,
+					      SYSCTRL_WAIT_COUNT_SET, 0x00);
+	AHB_EM32_SYSCON_WRITE_FIELD_OR_RETURN(ret, sysctrl_syscon, SYSCTRL_MISC_REG_CTRL_OFF,
+					      SYSCTRL_WAIT_COUNT_PASS_MASK, 0x00);
+	AHB_EM32_SYSCON_WRITE_FIELD_OR_RETURN(ret, sysctrl_syscon, SYSCTRL_SYS_REG_CTRL_OFF,
+					      SYSCTRL_HCLK_DIV_MASK, pre_div);
 
 	ret = elan_em32_get_ahb_freq(dev, &ahb_count_khz);
 	if (ret) {
