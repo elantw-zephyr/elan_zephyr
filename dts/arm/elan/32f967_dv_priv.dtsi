@@ -256,7 +256,8 @@
 };
 
 &clkctrl {
-	status = "disabled";
+	/* Enable CLKCTRL syscon for serialized shared register access. */
+	status = "okay";
 };
 
 &spi1_cs_pb0 {
