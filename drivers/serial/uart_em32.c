@@ -12,6 +12,10 @@
 #include <zephyr/drivers/pinctrl.h>
 #include <soc.h>
 
+/* APB clock controller must be initialized before UART. */
+BUILD_ASSERT(CONFIG_CLOCK_CONTROL_EM32_APB_INIT_PRIORITY < CONFIG_UART_EM32_INIT_PRIORITY,
+	     "UART must initialize after the APB clock controller");
+
 /* EM32 UART register offsets - corrected per spec */
 #define UART_DATA_OFFSET      0x00
 #define UART_STATE_OFFSET     0x04
@@ -163,6 +167,6 @@ static int uart_em32_init(const struct device *dev)
                                                                                                    \
 	DEVICE_DT_INST_DEFINE(index, uart_em32_init, NULL, /* PM control */                        \
 			      &uart_em32_data_##index, &uart_em32_config_##index, PRE_KERNEL_1,    \
-			      CONFIG_SERIAL_INIT_PRIORITY, &uart_em32_api);
+			      CONFIG_UART_EM32_INIT_PRIORITY, &uart_em32_api);
 
 DT_INST_FOREACH_STATUS_OKAY(UART_EM32_INIT)

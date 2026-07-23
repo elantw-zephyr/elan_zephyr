@@ -25,6 +25,13 @@
 
 LOG_MODULE_REGISTER(gpio_em32, CONFIG_GPIO_LOG_LEVEL);
 
+/* Syscon must be initialized before GPIO. */
+BUILD_ASSERT(CONFIG_SYSCON_INIT_PRIORITY < CONFIG_GPIO_EM32_INIT_PRIORITY,
+	     "GPIO must initialize after syscon");
+/* AHB clock controller must be initialized before GPIO. */
+BUILD_ASSERT(CONFIG_CLOCK_CONTROL_EM32_AHB_INIT_PRIORITY < CONFIG_GPIO_EM32_INIT_PRIORITY,
+	     "GPIO must initialize after the AHB clock controller");
+
 /* GPIO register offsets (EM32F967) */
 #define GPIO_DATA_OFFSET     0x00
 #define GPIO_DATAOUT_OFFSET  0x04
@@ -538,7 +545,7 @@ static int __maybe_unused gpio_em32_pm_action(const struct device *dev,
 	static struct gpio_em32_data gpio_em32_data_##n;                                           \
                                                                                                    \
 	DEVICE_DT_INST_DEFINE(n, gpio_em32_init, PM_DEVICE_DT_INST_GET(n), &gpio_em32_data_##n,    \
-			      &gpio_em32_config_##n, PRE_KERNEL_1, CONFIG_GPIO_INIT_PRIORITY,      \
+			      &gpio_em32_config_##n, PRE_KERNEL_1, CONFIG_GPIO_EM32_INIT_PRIORITY, \
 			      &gpio_em32_driver_api);
 
 DT_INST_FOREACH_STATUS_OKAY(GPIO_EM32_INIT)

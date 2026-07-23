@@ -13,6 +13,11 @@
 #include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(em32_apb, CONFIG_LOG_DEFAULT_LEVEL);
 
+/* AHB clock controller must be initialized before APB. */
+BUILD_ASSERT(CONFIG_CLOCK_CONTROL_EM32_AHB_INIT_PRIORITY <
+		     CONFIG_CLOCK_CONTROL_EM32_APB_INIT_PRIORITY,
+	     "APB clock controller must initialize after the AHB clock controller");
+
 struct elan_em32_apb_clock_control_config {
 	const struct device *clock_device;
 	uint32_t parent_gate_id;
@@ -87,7 +92,7 @@ static int elan_em32_apb_clock_control_init(const struct device *dev)
 	};                                                                                         \
 	DEVICE_DT_INST_DEFINE(inst, elan_em32_apb_clock_control_init, NULL, NULL,                  \
 			      &em32_apb_config_##inst, PRE_KERNEL_1,                               \
-			      CONFIG_CLOCK_CONTROL_INIT_PRIORITY,                                  \
+			      CONFIG_CLOCK_CONTROL_EM32_APB_INIT_PRIORITY,                         \
 			      &elan_em32_apb_clock_control_api)
 
 DT_INST_FOREACH_STATUS_OKAY(EM32_APB_INST_INIT)

@@ -18,6 +18,10 @@ LOG_MODULE_REGISTER(em32_ahb, CONFIG_LOG_DEFAULT_LEVEL);
 #include <soc_infoctrl.h>
 #include <soc_sysctrl.h>
 
+/* Syscon must be initialized before the AHB clock controller. */
+BUILD_ASSERT(CONFIG_SYSCON_INIT_PRIORITY < CONFIG_CLOCK_CONTROL_EM32_AHB_INIT_PRIORITY,
+	     "AHB clock controller must initialize after syscon");
+
 #define DWT_UNLOCK_KEY 0xC5ACCE55U
 #define EM32_GATE_MAX  63U
 
@@ -647,5 +651,5 @@ static const struct elan_em32_ahb_clock_control_config em32_ahb_config = {
 };
 
 DEVICE_DT_DEFINE(DT_NODELABEL(clk_ahb_v2), elan_em32_ahb_clock_control_init, NULL, NULL,
-		 &em32_ahb_config, PRE_KERNEL_1, CONFIG_CLOCK_CONTROL_INIT_PRIORITY,
+		 &em32_ahb_config, PRE_KERNEL_1, CONFIG_CLOCK_CONTROL_EM32_AHB_INIT_PRIORITY,
 		 &elan_em32_ahb_clock_control_api);
