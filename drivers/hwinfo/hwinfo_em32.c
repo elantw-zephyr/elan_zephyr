@@ -53,33 +53,30 @@ ssize_t z_impl_hwinfo_get_device_id(uint8_t *buffer, size_t length)
 
 int z_impl_hwinfo_get_supported_reset_cause(uint32_t *supported)
 {
-	*supported = (RESET_PIN | RESET_SOFTWARE | RESET_BROWNOUT | RESET_WATCHDOG |
-		      RESET_LOW_POWER_WAKE);
+	*supported = RESET_SOFTWARE | RESET_POR | RESET_WATCHDOG;
+	*supported |= RESET_LOW_POWER_WAKE;
 
 	return 0;
 }
 
 int z_impl_hwinfo_get_reset_cause(uint32_t *cause)
 {
-	if (SYSSTATUSCTRL->SWRESETS) // SW Reset
-	{
+	if (SYSSTATUSCTRL->SWRESETS) {
 		*cause = RESET_SOFTWARE;
-	} else if (SYSSTATUSCTRL->WDTRESETS) // Watchdog Reset
-	{
+	} else if (SYSSTATUSCTRL->WDTRESETS) {
 		*cause = RESET_WATCHDOG;
-	} else if (SYSSTATUSCTRL->BORRESETS) // Brownout Reset
-	{
-		*cause = RESET_BROWNOUT;
-	} else // Low Power Wake Reset or Reset Pin
-	{
-		SYSREGCTRL->POWEN = 1; // Enable power domain
+	} else {
+		/* Enable the power domain before reading the standby status. */
+		SYSREGCTRL->POWEN = 1;
 
-		if (POWERSWCTRL->StandBy1_S) // Low Power Wake Reset
-		{
+		if (POWERSWCTRL->StandBy1_S) {
 			*cause = RESET_LOW_POWER_WAKE;
-		} else // Reset Pin
-		{
-			*cause = RESET_PIN;
+		} else {
+			/*
+			 * An external reset pin cannot be detected directly.
+			 * If no supported reset source is set, treat it as POR.
+			 */
+			*cause = RESET_POR;
 		}
 	}
 
