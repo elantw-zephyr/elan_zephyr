@@ -3,8 +3,6 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#include <zephyr/dt-bindings/clock/em32_clock_upstream.h>
-
 /*
  * Board-specific CPU power state wiring.
  *
@@ -44,8 +42,6 @@
 
 / {
 	chosen {
-		zephyr,console = &uart1;
-		zephyr,shell-uart = &uart1;
 		zephyr,spi2 = &spi2;
 		zephyr,udc0 = &usbd;
 		zephyr,entropy = &trng0;
@@ -54,134 +50,11 @@
 	aliases {
 		spi2 = &spi2;
 		watchdog0 = &wdt0;
-		clock0 = &clk_ahb_v2;
-	};
-
-	clocks {
-		clk_apb_v2: clk-apb-v2 {
-			//compatible = "elan,em32-apb-v2";
-			compatible = "elan,em32-apb-v2", "elan,em32-apb";
-			#clock-cells = <1>;
-
-			/*
-			 * Reference AHB v2 as APB source clock.
-			 * The specifier cell is a placeholder here.
-			 */
-			clocks = <&clk_ahb_v2 EM32_GATE_NONE>;
-			status = "okay";
-		};
-
-		/*
-		 * New AHB clock controller (v2) with one specifier cell:
-		 * <&clk_ahb_v2 gate>
-		 */
-		clk_ahb_v2: clk-ahb-v2 {
-			//compatible = "elan,em32-ahb-v2";
-			compatible = "elan,em32-ahb-v2", "elan,em32-ahb";
-			#clock-cells = <1>;
-
-			clock-source = <EM32_CLK_SRC_IRCHIGH>;
-			clock-frequency = <EM32_CLK_FREQ_IRCHIGH96>;
-			clock-divider = <EM32_AHB_CLK_DIV1>;
-
-			status = "okay";
-		};
-	};
-	soc {
-		/* Information control (trim codes, device id/version, etc.) */
-		infoctrl: syscon@100a6000 {
-			compatible = "syscon";
-			reg = <0x100a6000 0x2000>;
-			reg-io-width = <4>;
-			status = "disabled";
-		};
-		pinctrl: pin-controller@40030200 {
-			/*
-			 * WakeUp Pin Configurations — WKUP1 to WKUP7 (AF5)
-			 *
-			 * These nodes configure IOMUX to AF5, routing the pin to the
-			 * EM32F967 WakeUp controller for deep-sleep (PDSW2/PDSW4) wakeup.
-			 *
-			 * No IOShare register configuration is required for AF5 WKUP pins —
-			 * routing is controlled entirely by the IOMUX register (4 bits/pin).
-			 *
-			 * Usage — reference in a board overlay or sample overlay:
-			 *   &some_device { pinctrl-0 = <&wkup3_pa15_af5>; pinctrl-names = "default"; };
-			 * Or use gpio_pin_configure_dt() with EM32_GPIO_WKUP flag (recommended
-			 * for most applications — the GPIO driver's two-phase wakeup design
-			 * arms the WakeUp controller automatically at sys_poweroff() time).
-			 *
-			 * Pin-to-WKUP mapping (EM32F967 hardware fixed):
-			 *   PA6  → WKUP1    PA14 → WKUP2    PA15 → WKUP3
-			 *   PB3  → WKUP4    PB7  → WKUP5
-			 *   PB8  → WKUP6    PB9  → WKUP7
-			 */
-
-			/* WKUP1 — PA6 (5V tolerant pin) */
-			/omit-if-no-ref/ wkup1_pa6_af5: wkup1_pa6_af5 {
-				pinmux = <EM32F967_PINMUX('A', 6, AF5)>;
-				bias-pull-up; /* default: active-low wakeup button */
-			};
-
-			/* WKUP2 — PA14 */
-			/omit-if-no-ref/ wkup2_pa14_af5: wkup2_pa14_af5 {
-				pinmux = <EM32F967_PINMUX('A', 14, AF5)>;
-				bias-pull-up;
-			};
-
-			/* WKUP3 — PA15 */
-			/omit-if-no-ref/ wkup3_pa15_af5: wkup3_pa15_af5 {
-				pinmux = <EM32F967_PINMUX('A', 15, AF5)>;
-				bias-pull-up;
-			};
-
-			/* WKUP4 — PB3 */
-			/omit-if-no-ref/ wkup4_pb3_af5: wkup4_pb3_af5 {
-				pinmux = <EM32F967_PINMUX('B', 3, AF5)>;
-				bias-pull-up;
-			};
-
-			/* WKUP5 — PB7 */
-			/omit-if-no-ref/ wkup5_pb7_af5: wkup5_pb7_af5 {
-				pinmux = <EM32F967_PINMUX('B', 7, AF5)>;
-				bias-pull-up;
-			};
-
-			/* WKUP6 — PB8 */
-			/omit-if-no-ref/ wkup6_pb8_af5: wkup6_pb8_af5 {
-				pinmux = <EM32F967_PINMUX('B', 8, AF5)>;
-				bias-pull-up;
-			};
-
-			/* WKUP7 — PB9 */
-			/omit-if-no-ref/ wkup7_pb9_af5: wkup7_pb9_af5 {
-				pinmux = <EM32F967_PINMUX('B', 9, AF5)>;
-				bias-pull-up;
-			};
-		};
-
 	};
 };
 
 &spi2 {
 	compatible = "arm,pl022";
-	clocks = <&clk_apb_v2 EM32_GATE_PCLKG_SSP2>;
-	status = "okay";
-};
-
-&uart1 {
-	compatible = "elan,em32-uart";
-	clocks = <&clk_apb_v2 EM32_GATE_PCLKG_UART1>;
-	status = "okay";
-};
-
-&gpioa {
-	clocks = <&clk_ahb_v2 EM32_GATE_HCLKG_GPIOA>;
-	status = "okay";
-};
-
-&gpiob {
-	clocks = <&clk_ahb_v2 EM32_GATE_HCLKG_GPIOB>;
 	status = "okay";
 };
 
@@ -199,136 +72,36 @@
 };
 
 &trng0 {
-	clocks = <&clk_apb_v2 EM32_GATE_PCLKG_TRNG>;
 	status = "okay";
 };
 
 &wdt0 {
-	clocks = <&clk_apb_v2 EM32_GATE_PCLKG_DWG>;
 	status = "okay";
 };
 
 &crypto0 {
-	clocks = <&clk_apb_v2 EM32_GATE_HCLKG_ENCRYPT>;
 	status = "okay";
 };
 
 /* Enable Timer controllers */
 &timer1 {
-	clocks = <&clk_apb_v2 EM32_GATE_PCLKG_TMR1>;
 	status = "okay";
 };
 
 &timer2 {
-	clocks = <&clk_apb_v2 EM32_GATE_PCLKG_TMR2>;
 	status = "okay";
-};
-
-&timer3 {
-	clocks = <&clk_apb_v2 EM32_GATE_PCLKG_TMR3>;
-};
-
-&timer4 {
-	clocks = <&clk_apb_v2 EM32_GATE_PCLKG_TMR4>;
 };
 
 /* Enable RTC */
 &rtc0 {
-	clocks = <&clk_apb_v2 EM32_GATE_PCLKG_RTC>;
 	status = "okay";
 };
 
 /* Enable PWM Controller - PWMB N output on PA3 */
 &pwm0 {
-	clocks = <&clk_apb_v2 EM32_GATE_PCLKG_PWM>;
-	status = "okay";
-};
-
-&sysctrl {
-	/* Enabled so the pinctrl and gpio drivers can serialize their shared
-	 * register writes through the syscon API (syscon_update_bits).
-	 */
 	status = "okay";
 };
 
 &pwrctrl {
 	status = "disabled";
-};
-
-&clkctrl {
-	/* Enable CLKCTRL syscon for serialized shared register access. */
-	status = "okay";
-};
-
-&infoctrl {
-	/* Enable INFOCTRL syscon for factory trim value reads. */
-	status = "okay";
-};
-
-&spi1_cs_pb0 {
-	drive-strength = <1>;
-};
-
-&spi1_sck_pb1 {
-	drive-strength = <1>;
-};
-
-&spi1_mosi_pb3 {
-	drive-strength = <1>;
-};
-
-&spi2_cs_pb4 {
-	drive-strength = <1>;
-};
-
-&spi2_sck_pb5 {
-	drive-strength = <1>;
-};
-
-&spi2_mosi_pb7 {
-	drive-strength = <1>;
-};
-
-&pwma_pa0_p {
-	drive-strength = <1>;
-};
-
-&pwma_pa1_n {
-	drive-strength = <1>;
-};
-
-&pwmb_pa2_p {
-	drive-strength = <1>;
-};
-
-&pwmb_pa3_n {
-	drive-strength = <1>;
-};
-
-&pwmc_pa4_p {
-	drive-strength = <1>;
-};
-
-&pwmc_pa5_n {
-	drive-strength = <1>;
-};
-
-&pwma_pb11_n {
-	drive-strength = <1>;
-};
-
-&pwmb_pb12_p {
-	drive-strength = <1>;
-};
-
-&pwmb_pb13_n {
-	drive-strength = <1>;
-};
-
-&pwmc_pb14_p {
-	drive-strength = <1>;
-};
-
-&pwmc_pb15_n {
-	drive-strength = <1>;
 };

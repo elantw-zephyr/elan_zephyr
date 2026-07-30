@@ -1,1 +1,0 @@
-zephyr_library_sources_ifdef(CONFIG_GPIO_EM32 gpio_em32.c)

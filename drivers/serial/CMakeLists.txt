@@ -1,1 +1,0 @@
-zephyr_library_sources_ifdef(CONFIG_UART_EM32 uart_em32.c)
