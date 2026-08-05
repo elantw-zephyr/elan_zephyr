@@ -1,0 +1,1 @@
+zephyr_library_sources_ifdef(CONFIG_PINCTRL_EM32 pinctrl_em32.c)
