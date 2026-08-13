@@ -24,6 +24,11 @@ LOG_MODULE_REGISTER(udc_em32, CONFIG_UDC_DRIVER_LOG_LEVEL);
 #define EP0_MPS                  8
 #define EP_MPS                  64
 
+#define ORG_PIPE_N	0x81
+#define NEW_PIPE_N	0x83
+
+#define DBG_LOG_EN	0
+
 enum udc_em32_msg_type {
     /* Setup packet received */
     UDC_EM32_MSG_TYPE_SETUP,
@@ -171,7 +176,7 @@ struct udc_em32_data {
      */
     uint32_t configured_state;
     /* The source of the remote wakeup request */
-    uint32_t is_proc_remote_wakeup;
+    uint32_t proc_remote_wakeup_state;
     /* Control from ep1 to ep4 */
     struct udc_em32_usbd_ep epx_ctrl[USB_NUM_BIDIR_ENDPOINTS - 1];
 
@@ -271,7 +276,7 @@ static inline void usb_em32_set_clk_prop(const struct udc_em32_data *priv)
 }
 
 /* Hardcoded em32 usb ep settings */
-static const unsigned char usb_ep_conf_data[6] = {0x43, 0x43, 0x42, 0x42, 0xFA, 0x00};
+static const unsigned char usb_ep_conf_data[6] = {0x43, 0x43, 0x43, 0x43, 0xFA, 0x00};
 static const uint32_t ep1_max_pkg_size = 64;
 static const uint32_t ep2_max_pkg_size = 64;
 static const uint32_t ep3_max_pkg_size = 64;
@@ -503,6 +508,38 @@ void get_out_pipe_num( const struct device *dev, struct net_buf *buf)
     if( len <= 9)
         return;
     
+    if( (ptr[0] == 0x09) && (ptr[1] == 0x02) && *((uint16_t*)(ptr+6)) > 9) {
+        pEnd = ptr+len;
+        ptr = ptr + ptr[0];
+        while( ptr < pEnd )
+        {
+            if( ptr[0] == 7 && ptr[1] == 5) {
+                if (ptr[2] == ORG_PIPE_N) {
+                    priv->ep_out_num = ptr[2];
+                    priv->ep_out_num_new = NEW_PIPE_N;
+                    ptr[2] = priv->ep_out_num_new;
+                }
+            }
+            ptr = ptr + ptr[0];
+        }
+    }
+}
+
+#if 0
+/* org */
+void get_out_pipe_num( const struct device *dev, struct net_buf *buf)
+{
+    struct udc_em32_data *priv = udc_get_private(dev);
+    uint8_t *ptr;
+    uint8_t *pEnd;
+    uint32_t len;
+    
+    ptr = buf->data;
+    len = buf->len;
+    
+    if( len <= 9)
+        return;
+    
     if( ptr[0] == 0x09 && ptr[1] == 0x02) {
         
         pEnd = ptr+len;
@@ -513,7 +550,7 @@ void get_out_pipe_num( const struct device *dev, struct net_buf *buf)
                 if( (ptr[2] & 0x80) == 0)
                 {
                     priv->ep_out_num = ptr[2];
-                    priv->ep_out_num_new = 3;
+                    priv->ep_out_num_new = NEW_PIPE_N;
                     ptr[2] = priv->ep_out_num_new;
                 }
             }
@@ -521,6 +558,7 @@ void get_out_pipe_num( const struct device *dev, struct net_buf *buf)
         }
     }
 }
+#endif
 #endif
 
 static int udc_em32_ep_enqueue(const struct device *dev, struct udc_ep_config *const cfg,
@@ -540,14 +578,23 @@ static int udc_em32_ep_enqueue(const struct device *dev, struct udc_ep_config *c
         get_out_pipe_num( dev, buf);
     }
 
-    if( (priv->ep_out_num != 0) && (ep == priv->ep_out_num) ) {
+    if ((priv->ep_out_num != 0) && (ep == priv->ep_out_num)) {
         new_cfg = udc_get_ep_cfg( dev, priv->ep_out_num_new);
+#if DBG_LOG_EN
+		LOG_ERR("enq %x", new_cfg->addr);
+#endif
         udc_buf_put( new_cfg, buf);
         ep = priv->ep_out_num_new;
     }else {
+#if DBG_LOG_EN
+		LOG_ERR("enq %x", cfg->addr);
+#endif
         udc_buf_put( cfg, buf);
     }
 #else
+#if DBG_LOG_EN
+	LOG_ERR("enq %x", cfg->addr);
+#endif
     udc_buf_put( cfg, buf);
 #endif
 
@@ -564,9 +611,22 @@ static int udc_em32_ep_enqueue(const struct device *dev, struct udc_ep_config *c
     return 0;
 }
 
-static int udc_em32_ep_dequeue(const struct device *dev, struct udc_ep_config *const ep_cfg)
+static int udc_em32_ep_dequeue(const struct device *dev, struct udc_ep_config *const cfg)
 {
-    udc_ep_cancel_queued(dev, ep_cfg);
+	struct udc_em32_data *priv = udc_get_private(dev);
+
+#if (IS_IO_ROUTE)
+	struct udc_ep_config *new_cfg;
+
+	if ((priv->ep_out_num != 0) && (cfg->addr == priv->ep_out_num)) {
+		new_cfg = udc_get_ep_cfg( dev, priv->ep_out_num_new);
+		udc_ep_cancel_queued(dev, new_cfg);
+	} else {
+		udc_ep_cancel_queued(dev, cfg);
+	}
+#else
+	udc_ep_cancel_queued(dev, cfg);
+#endif
 
     return 0;
 }
@@ -611,7 +671,20 @@ static void usb_em32_ep_set_halt(struct udc_em32_data *priv, struct udc_ep_confi
 static int udc_em32_ep_set_halt(const struct device *dev, struct udc_ep_config *const cfg)
 {
     struct udc_em32_data *priv = udc_get_private(dev);
+
+#if (IS_IO_ROUTE)
+	struct udc_ep_config *new_cfg;
+
+	if ((priv->ep_out_num != 0) && (cfg->addr == priv->ep_out_num)) {
+		new_cfg = udc_get_ep_cfg( dev, priv->ep_out_num_new);
+		usb_em32_ep_set_halt(priv, new_cfg, true);
+	} else {
+		usb_em32_ep_set_halt(priv, cfg, true);
+	}
+#else
     usb_em32_ep_set_halt(priv, cfg, true);
+#endif
+
     return 0;
 }
 
@@ -622,7 +695,20 @@ static int udc_em32_ep_set_halt(const struct device *dev, struct udc_ep_config *
 static int udc_em32_ep_clear_halt(const struct device *dev, struct udc_ep_config *const cfg)
 {
     struct udc_em32_data *priv = udc_get_private(dev);
+
+#if (IS_IO_ROUTE)
+	struct udc_ep_config *new_cfg;
+
+	if ((priv->ep_out_num != 0) && (cfg->addr == priv->ep_out_num)) {
+		new_cfg = udc_get_ep_cfg( dev, priv->ep_out_num_new);
+		usb_em32_ep_set_halt(priv, new_cfg, false);
+	} else {
+		usb_em32_ep_set_halt(priv, cfg, false);
+	}
+#else
     usb_em32_ep_set_halt(priv, cfg, false);
+#endif
+
     return 0;
 }
 
@@ -646,17 +732,17 @@ static void re_issue_pending_pkg(const struct device *dev)
     struct udc_em32_msg msg;
     int i;
 
-    if( priv->is_pending_pkg) {
-
-        /* Copy the request from pending_setup_pkg to setup_pkg, 
-         *  then clear the is_pending_pkg flag. 
-         * Send the UDC_EM32_MSG_TYPE_SETUP message to 
+    if (priv->is_pending_pkg) {
+        /* Copy the request from pending_setup_pkg to setup_pkg,
+         *  then clear the is_pending_pkg flag.
+         * Send the UDC_EM32_MSG_TYPE_SETUP message to
          *  process the request from setup_pkg.
          */
         for( i=0; i<8; i++) {
             priv->setup_pkg[i] = priv->pending_setup_pkg[i];
         }
-        priv->is_pending_pkg = 0;
+        atomic_set((void*)&priv->is_pending_pkg, 0);
+        //priv->is_pending_pkg = 0;
         
         msg.type = UDC_EM32_MSG_TYPE_SETUP;
         k_msgq_put(priv->msgq, &msg, K_NO_WAIT);
@@ -676,6 +762,7 @@ static int do_patch_proc(const struct device *dev) {
     struct udc_em32_data *priv = udc_get_private(dev);
     int i;
 
+	
     if (priv->addressed_state == USB_EM32_NOT_ADDRESSED) {
         if (*((uint32_t *)(priv->setup_pkg)) == 0x01000680 &&
             *((uint16_t *)(priv->setup_pkg + 6)) >= 18) {
@@ -699,7 +786,8 @@ static int do_patch_proc(const struct device *dev) {
         for(i=0; i<8; i++) {
             priv->pending_setup_pkg[i] = priv->setup_pkg[i];
         }
-        priv->is_pending_pkg = 1;
+        atomic_set((void*)&priv->is_pending_pkg, 1);
+        //priv->is_pending_pkg = 1;
         
         priv->setup_pkg[0] = 0x00;
         priv->setup_pkg[1] = 0x05;
@@ -734,7 +822,8 @@ static int do_patch_proc(const struct device *dev) {
             for(i=0; i<8; i++) {
                 priv->pending_setup_pkg[i] = priv->setup_pkg[i];
             }
-            priv->is_pending_pkg = 1;
+			atomic_set((void*)&priv->is_pending_pkg, 1);
+            //priv->is_pending_pkg = 1;
 
             priv->setup_pkg[0] = 0x00;
             priv->setup_pkg[1] = 0x09;
@@ -766,7 +855,8 @@ int em32_set_remote_wakeup_handler( const struct device *dev, uint32_t isSet)
     struct udc_em32_msg msg = {0};
     int i;
 
-    priv->is_pending_pkg = 0;
+	atomic_set((void*)&priv->is_pending_pkg, 0);
+	//priv->is_pending_pkg = 0;
     for( i=0; i<8; i++) {
         priv->pending_setup_pkg[i] = 0x0;
         priv->setup_pkg[i] = 0x0;
@@ -822,8 +912,10 @@ static int udc_em32_setup_msg_handler(const struct device *dev, const struct udc
 
     udc_setup_received( dev, setup_pkg);
     priv->ep0_xfer_size = xfer_size;
-    priv->is_ep0_in_en = 1;
-    priv->is_ep0_out_en = 1;
+	atomic_set((void*)&priv->is_ep0_in_en, 1);
+//    priv->is_ep0_in_en = 1;
+	atomic_set((void*)&priv->is_ep0_out_en, 1);
+//    priv->is_ep0_out_en = 1;
 
     return 0;
 }
@@ -839,7 +931,7 @@ static int udc_em32_ctrl_out(const struct device *dev, uint8_t ep)
     uint32_t data_len;
     uint32_t len;
     uint32_t is_empty;
-    uint32_t is_out_pkg_in;
+//    uint32_t is_out_pkg_in;
 
     ep_cfg = udc_get_ep_cfg(dev, ep);
     buf = udc_buf_peek(ep_cfg);
@@ -866,14 +958,16 @@ static int udc_em32_ctrl_out(const struct device *dev, uint8_t ep)
     }
 
     /* process data package */
-    is_out_pkg_in = 0;
-    if (priv->is_ep0_out_pkg) {
-        is_out_pkg_in = 1;
-    }
-
-    if (!is_out_pkg_in) {
-        return 0;
-    }
+	if (!atomic_test_bit((void*)&priv->is_ep0_out_pkg, 0)) {
+		return 0;
+	}
+    //is_out_pkg_in = 0;
+    //if (priv->is_ep0_out_pkg) {
+    //    is_out_pkg_in = 1;
+    //}
+    //if (!is_out_pkg_in) {
+    //    return 0;
+    //}
 
     data_len = net_buf_tailroom(buf);
     data_ptr = net_buf_tail(buf);
@@ -904,8 +998,9 @@ static int udc_em32_ctrl_out(const struct device *dev, uint8_t ep)
         buf = udc_buf_get(ep_cfg);
         udc_submit_ep_event(dev, buf, 0);
     }
-    
-    priv->is_ep0_out_pkg = 0;
+
+	atomic_set((void*)&priv->is_ep0_out_pkg, 0);
+//    priv->is_ep0_out_pkg = 0;
     
     return 0;
 }
@@ -954,13 +1049,13 @@ static int udc_em32_ctrl_in(const struct device *dev, uint8_t ep)
             re_issue_pending_pkg(dev);
 
             return 0;
-        } else if ( priv->is_proc_remote_wakeup)
+        } else if ( priv->proc_remote_wakeup_state)
         {
             /* This status transaction is for remote-wakeup patch */
             buf = udc_buf_get(ep_cfg);
             udc_submit_ep_event(dev, buf, 0);
 
-            if( priv->is_proc_remote_wakeup == USB_REMOTE_WAKEUP_REQ_SRC_SUSPEND) {
+            if( priv->proc_remote_wakeup_state == USB_REMOTE_WAKEUP_REQ_SRC_SUSPEND) {
                 /* After completing the remote-wakeup patch, 
                  *  a suspend event must be sent to notify the upper layer.
                  */
@@ -970,7 +1065,7 @@ static int udc_em32_ctrl_in(const struct device *dev, uint8_t ep)
 				lock_pm_policy(dev, false);
             }
 
-            priv->is_proc_remote_wakeup = USB_REMOTE_WAKEUP_REQ_NOT_ISSUE;
+            priv->proc_remote_wakeup_state = USB_REMOTE_WAKEUP_REQ_NOT_ISSUE;
         } else {
             buf = udc_buf_get(ep_cfg);
             udc_submit_ep_event(dev, buf, 0);
@@ -1118,10 +1213,10 @@ static int udc_em32_pwr_msg_handler(const struct device *dev, struct udc_em32_ms
 
     priv->setup_pkg[0] = 0x00;
     if (sus) {
-        priv->is_proc_remote_wakeup = USB_REMOTE_WAKEUP_REQ_SRC_SUSPEND;
+        priv->proc_remote_wakeup_state = USB_REMOTE_WAKEUP_REQ_SRC_SUSPEND;
         priv->setup_pkg[1] = 0x03;
     } else {
-        priv->is_proc_remote_wakeup = USB_REMOTE_WAKEUP_REQ_SRC_RESUME;
+        priv->proc_remote_wakeup_state = USB_REMOTE_WAKEUP_REQ_SRC_RESUME;
         priv->setup_pkg[1] = 0x01;
     }
     priv->setup_pkg[2] = 0x01;
@@ -1282,11 +1377,16 @@ static void usb_em32_setup_isr(const struct device *dev)
     struct udc_em32_msg msg = {0};
     uint32_t index;
 
-    priv->is_pending_pkg = 0;
-    priv->is_ep0_in_en = 0;
-    priv->is_ep0_out_en = 0;
-    priv->is_ep0_out_pkg = 0;
-    priv->ep0_xfer_size = 0;
+	atomic_set((void*)&priv->is_pending_pkg, 0);
+    //priv->is_pending_pkg = 0;
+	atomic_set((void*)&priv->is_ep0_in_en, 0);
+    //priv->is_ep0_in_en = 0;
+	atomic_set((void*)&priv->is_ep0_out_en, 0);
+    //priv->is_ep0_out_en = 0;
+	atomic_set((void*)&priv->is_ep0_out_pkg, 0);
+    //priv->is_ep0_out_pkg = 0;
+	atomic_set((void*)&priv->ep0_xfer_size, 0);
+    //priv->ep0_xfer_size = 0;
 
     for (index = 0; index < 8; index++) {
         priv->setup_pkg[index] = (uint8_t)sys_read32(REG_EP0_DATA_BUF);
@@ -1310,7 +1410,8 @@ void usb_em32_proc_ep0_h2d(const struct device *dev)
     ep_cfg = udc_get_ep_cfg(dev, USB_CONTROL_EP_OUT);
     buf = udc_buf_peek(ep_cfg);
 
-    if (!(priv->is_ep0_out_en)) {
+	if (!atomic_test_bit((void*)&priv->is_ep0_out_en, 0)) {
+    //if (!(priv->is_ep0_out_en)) {
         goto exit;
     }
 
@@ -1324,15 +1425,19 @@ void usb_em32_proc_ep0_h2d(const struct device *dev)
         goto exit;
     }
 
-    if (priv->is_ep0_out_pkg) {
+	if (atomic_test_bit((void*)&priv->is_ep0_out_pkg, 0)) {
         goto exit;
-    }
+	}
+//    if (priv->is_ep0_out_pkg) {
+//        goto exit;
+//    }
 
     data_ptr = NULL;
     data_len = 0;
 
     if (buf == NULL) {
-        priv->is_ep0_out_pkg = 1;
+        atomic_set((void*)&priv->is_ep0_out_pkg, 1);
+//        priv->is_ep0_out_pkg = 1;
         goto exit;
     }
 
@@ -1348,12 +1453,11 @@ void usb_em32_proc_ep0_h2d(const struct device *dev)
         if (sys_test_bit(REG_EP_BUF_STA, REG_EP_BUF_STA_EP0_OUTBUF_EMPTY_Pos)) {
             break;
         }
-        
+
         *data_ptr = (uint8_t)sys_read32(REG_EP0_DATA_BUF);
-        
+
         len += 1;
         data_ptr++;
-        
     } while(1);
 
     if (!sys_test_bit(REG_EP_BUF_STA, REG_EP_BUF_STA_EP0_OUTBUF_EMPTY_Pos)) {
@@ -1384,7 +1488,8 @@ void usb_em32_proc_ep0_d2h(const struct device *dev)
     uint32_t len, i;
     struct udc_buf_info *bi;
 
-    if (!(priv->is_ep0_in_en)) {
+	if (!atomic_test_bit((void*)&priv->is_ep0_in_en, 0)) {
+//    if (!(priv->is_ep0_in_en)) {
         goto exit;
     }
 
@@ -1636,9 +1741,8 @@ static void usb_em32_ep_h2d_isr(const struct device *dev)
     }
 }
 
-static int udc_em32_ep_enable(const struct device *dev, struct udc_ep_config *const cfg)
+static int usb_em32_ep_en(struct udc_em32_data *priv, struct udc_ep_config *const cfg)
 {
-    struct udc_em32_data *priv = udc_get_private(dev);
     struct udc_em32_usbd_ep *ep_ctrl;
     uint8_t ep_dir;
     uint8_t ep_idx;
@@ -1652,7 +1756,7 @@ static int udc_em32_ep_enable(const struct device *dev, struct udc_ep_config *co
     }
 
     if (ep_idx > 4) {
-        return -1;
+        return -EINVAL;
     }
 
     if (ep_dir == USB_EP_DIR_IN) {
@@ -1678,13 +1782,33 @@ static int udc_em32_ep_enable(const struct device *dev, struct udc_ep_config *co
         sys_clear_bit(REG_USB_CTRL_EXT, REG_USB_CTRL_EXT_EP4_STALL_Pos);
         sys_set_bit(REG_USB_CTRL, REG_USB_CTRL_EP4_EN_Pos);
     }
-
-    return 0;
+	
+	return 0;
 }
 
-static int udc_em32_ep_disable(const struct device *dev, struct udc_ep_config *const cfg)
+static int udc_em32_ep_enable(const struct device *dev, struct udc_ep_config *const cfg)
 {
     struct udc_em32_data *priv = udc_get_private(dev);
+	int err = 0;
+
+#if (IS_IO_ROUTE)
+	struct udc_ep_config *new_cfg;
+
+	if ((priv->ep_out_num != 0) && (cfg->addr == priv->ep_out_num)) {
+		new_cfg = udc_get_ep_cfg( dev, priv->ep_out_num_new);
+		err = usb_em32_ep_en(priv, new_cfg);
+	} else {
+		err = usb_em32_ep_en(priv, cfg);
+	}
+#else
+    err = usb_em32_ep_en(priv, cfg);
+#endif
+
+    return err;
+}
+
+static int usb_em32_ep_off(struct udc_em32_data *priv, struct udc_ep_config *const cfg)
+{
     struct udc_em32_usbd_ep *ep_ctrl;
     uint8_t ep_dir;
     uint8_t ep_idx;
@@ -1698,7 +1822,7 @@ static int udc_em32_ep_disable(const struct device *dev, struct udc_ep_config *c
     }
 
     if (ep_idx > 4) {
-        return -1;
+        return -EINVAL;
     }
 
     if (ep_idx == 1) {
@@ -1720,6 +1844,27 @@ static int udc_em32_ep_disable(const struct device *dev, struct udc_ep_config *c
         sys_clear_bit(ep_ctrl->reg_ep_int_en, REG_EPX_INT_EN_OUT_INT_EN_Pos);
         sys_set_bit(ep_ctrl->reg_ep_int_sta, REG_EPX_INT_STA_OUT_INT_SF_CLR_Pos);
     }
+
+	return 0;
+}
+
+static int udc_em32_ep_disable(const struct device *dev, struct udc_ep_config *const cfg)
+{
+    struct udc_em32_data *priv = udc_get_private(dev);
+	int err = 0;
+
+#if (IS_IO_ROUTE)
+	struct udc_ep_config *new_cfg;
+
+	if ((priv->ep_out_num != 0) && (cfg->addr == priv->ep_out_num)) {
+		new_cfg = udc_get_ep_cfg( dev, priv->ep_out_num_new);
+		err = usb_em32_ep_off(priv, new_cfg);
+	} else {
+		err = usb_em32_ep_off(priv, cfg);
+	}
+#else
+    err = usb_em32_ep_off(priv, cfg);
+#endif
 
     return 0;
 }
@@ -2038,7 +2183,7 @@ static const struct udc_api udc_em32_api = {
         .ep0_xfer_size = 0,                                                            \
         .configured_state = USB_EM32_NOT_CONFIGURED,                                   \
         .addressed_state = USB_EM32_NOT_ADDRESSED,                                     \
-        .is_proc_remote_wakeup = USB_REMOTE_WAKEUP_REQ_NOT_ISSUE                       \
+        .proc_remote_wakeup_state = USB_REMOTE_WAKEUP_REQ_NOT_ISSUE                    \
     };                                                                                 \
                                                                                        \
     static struct udc_data em32_udc_data_##inst = {                                    \

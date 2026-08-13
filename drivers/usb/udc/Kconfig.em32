@@ -28,4 +28,10 @@ config UDC_EM32_MSG_QUEUE_SIZE
     help
       Maximum number of messages the driver can queue for interrupt bottom half processing.
 
+config IO_ROUTE
+	bool "Workaround for a specific project"
+	default y
+	help
+	  This option should only be enabled for a specific project.
+
 endif
