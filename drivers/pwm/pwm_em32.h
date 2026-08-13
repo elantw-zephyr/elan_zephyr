@@ -1,11 +1,6 @@
 /*
  * SPDX-FileCopyrightText: 2026 ELAN Microelectronics Corp.
  * SPDX-License-Identifier: Apache-2.0
- *
- * EM32F967 PWM Controller Driver Header
- *
- * Based on tested pwm.h and pwm.c sample code from EM32F967 SDK.
- * This header defines all registers and types for the EM32F967 PWM controller.
  */
 
 #ifndef ZEPHYR_DRIVERS_PWM_PWM_EM32_H_

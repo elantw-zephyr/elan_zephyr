@@ -1,11 +1,6 @@
 /*
  * SPDX-FileCopyrightText: 2026 ELAN Microelectronics Corp.
  * SPDX-License-Identifier: Apache-2.0
- *
- * EM32F967 PWM Controller Driver
- *
- * Based on tested pwm.c sample code from EM32F967 SDK.
- * Implements Zephyr PWM driver API for EM32F967 6-channel PWM controller.
  */
 
 #define DT_DRV_COMPAT elan_em32_pwm
@@ -38,7 +33,6 @@ struct pwm_em32_data {
 	struct k_spinlock lock;
 };
 
-/* Register access helpers */
 static inline uint32_t pwm_em32_read(const struct pwm_em32_config *cfg, uint32_t offset)
 {
 	return sys_read32(cfg->base + offset);
@@ -50,7 +44,6 @@ static inline void pwm_em32_write(const struct pwm_em32_config *cfg, uint32_t of
 	sys_write32(value, cfg->base + offset);
 }
 
-/* Get channel register base offset */
 static inline uint32_t pwm_em32_channel_offset(uint32_t channel)
 {
 	if (channel >= PWM_EM32_NUM_CHANNELS) {
@@ -59,12 +52,31 @@ static inline uint32_t pwm_em32_channel_offset(uint32_t channel)
 	return pwm_channel_offsets[channel];
 }
 
-/* Enable clock gating for PWM */
 static void pwm_em32_clock_enable(void)
 {
 	uint32_t reg = sys_read32(CLK_GATE_REG_ADDR);
 	reg &= ~BIT(PCLKG_PWM);  /* Clear bit to enable clock (active low) */
 	sys_write32(reg, CLK_GATE_REG_ADDR);
+}
+
+static void pwm_em32_quiesce(const struct pwm_em32_config *cfg)
+{
+	/* Stop all channel timers before clearing retained channel state. */
+	pwm_em32_write(cfg, PWM_ENCR_OFFSET, 0U);
+
+	for (uint32_t channel = 0U; channel < PWM_EM32_NUM_CHANNELS; channel++) {
+		uint32_t offset = pwm_em32_channel_offset(channel);
+
+		pwm_em32_write(cfg, offset + PWM_CR_OFFSET, 0U);
+		pwm_em32_write(cfg, offset + PWM_DTR_OFFSET, 0U);
+		pwm_em32_write(cfg, offset + PWM_PRDR_OFFSET, 0U);
+	}
+
+	/* Do this last in case DEADTR commits or reloads channel state. */
+	pwm_em32_write(cfg, PWM_DEADTR_OFFSET, 0U);
+
+	/* Flush posted APB writes before connecting the PWM output pins. */
+	(void)pwm_em32_read(cfg, PWM_ENCR_OFFSET);
 }
 
 /* Configure IP Share for PWM pin selection and N output routing
@@ -106,7 +118,6 @@ static void pwm_em32_configure_pin_select(bool use_port_b, uint8_t output_type)
 	sys_write32(reg, IP_SHARE_CTRL_ADDR);
 }
 
-/* Enable a PWM channel */
 static void pwm_em32_channel_enable(const struct pwm_em32_config *cfg, uint32_t channel)
 {
 	uint32_t encr = pwm_em32_read(cfg, PWM_ENCR_OFFSET);
@@ -114,7 +125,6 @@ static void pwm_em32_channel_enable(const struct pwm_em32_config *cfg, uint32_t 
 	pwm_em32_write(cfg, PWM_ENCR_OFFSET, encr);
 }
 
-/* Disable a PWM channel */
 static void pwm_em32_channel_disable(const struct pwm_em32_config *cfg, uint32_t channel)
 {
 	uint32_t encr = pwm_em32_read(cfg, PWM_ENCR_OFFSET);
@@ -155,17 +165,7 @@ static int pwm_em32_set_cycles(const struct device *dev, uint32_t channel,
 
 	key = k_spin_lock(&data->lock);
 
-	/*
-	 * Configure control register FIRST (before setting period/duty)
-	 *
-	 * Hardware behavior (verified by testing):
-	 * - PWMAE (bit 15): Enable P output
-	 * - PWMAA (bit 13): P output polarity - 1=normal (HIGH during duty), 0=inverted
-	 * - IPWMAE (bit 14): Enable N output
-	 * - IPWMAA (bit 12): N output polarity - 0=complementary to P, 1=same as P
-	 */
 	cr_val = 0;
-
 	/* Configure output based on output_type setting */
 	switch (cfg->output_type) {
 	case PWM_EM32_OUTPUT_N:
@@ -237,7 +237,6 @@ static int pwm_em32_set_cycles(const struct device *dev, uint32_t channel,
 	return 0;
 }
 
-/* Get cycles per second (clock frequency) */
 static int pwm_em32_get_cycles_per_sec(const struct device *dev, uint32_t channel,
 				       uint64_t *cycles)
 {
@@ -251,47 +250,11 @@ static int pwm_em32_get_cycles_per_sec(const struct device *dev, uint32_t channe
 	return 0;
 }
 
-/* Set dead-time for complementary outputs (for future use) */
-static int __maybe_unused pwm_em32_set_dead_time(const struct device *dev, uint32_t dead_time_ns)
-{
-	const struct pwm_em32_config *cfg = dev->config;
-	struct pwm_em32_data *data = dev->data;
-	uint32_t dead_time_cycles;
-	uint32_t prescaler = 0;
-	uint32_t reg_val;
-
-	/* Calculate dead-time in clock cycles */
-	dead_time_cycles = (uint64_t)dead_time_ns * data->clock_freq / 1000000000ULL;
-
-	/* Find appropriate prescaler */
-	while (dead_time_cycles > 0xFFFF && prescaler < 3) {
-		prescaler++;
-		dead_time_cycles >>= 1;
-	}
-
-	if (dead_time_cycles > 0xFFFF) {
-		LOG_ERR("Dead-time too large");
-		return -EINVAL;
-	}
-
-	reg_val = (dead_time_cycles & PWMDEADTR_VALUE_MASK) |
-		  ((prescaler & PWMDEADTR_TP_MASK) << PWMDEADTR_TP_SHIFT);
-
-	pwm_em32_write(cfg, PWM_DEADTR_OFFSET, reg_val);
-
-	LOG_DBG("Dead-time set: %u ns (%u cycles, prescaler %u)",
-		dead_time_ns, dead_time_cycles, prescaler);
-
-	return 0;
-}
-
-/* PWM driver API */
 static DEVICE_API(pwm, pwm_em32_driver_api) = {
 	.set_cycles = pwm_em32_set_cycles,
 	.get_cycles_per_sec = pwm_em32_get_cycles_per_sec,
 };
 
-/* Device initialization */
 static int pwm_em32_init(const struct device *dev)
 {
 	const struct pwm_em32_config *cfg = dev->config;
@@ -300,6 +263,7 @@ static int pwm_em32_init(const struct device *dev)
 
 	/* Enable PWM clock */
 	pwm_em32_clock_enable();
+	pwm_em32_quiesce(cfg);
 
 	/* Get clock frequency */
 	if (cfg->clock_dev != NULL) {
@@ -352,12 +316,6 @@ static int pwm_em32_init(const struct device *dev)
 	LOG_DBG("PWM using Port %c pins, output_type=%u",
 		cfg->use_port_a ? 'A' : 'B', cfg->output_type);
 
-	/* Disable all channels initially */
-	pwm_em32_write(cfg, PWM_ENCR_OFFSET, 0);
-
-	/* Clear dead-time register */
-	pwm_em32_write(cfg, PWM_DEADTR_OFFSET, 0);
-
 	LOG_INF("EM32 PWM controller initialized at 0x%08x", cfg->base);
 	LOG_DBG("IP_SHARE=0x%08x, CLK_GATE=0x%08x",
 		sys_read32(IP_SHARE_CTRL_ADDR), sys_read32(CLK_GATE_REG_ADDR));
@@ -386,4 +344,3 @@ static int pwm_em32_init(const struct device *dev)
 			      &pwm_em32_driver_api);
 
 DT_INST_FOREACH_STATUS_OKAY(PWM_EM32_INIT)
-
