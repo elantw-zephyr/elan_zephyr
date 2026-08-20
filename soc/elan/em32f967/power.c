@@ -284,7 +284,7 @@ static void pm_log_registers(const char *prefix)
 	LOG_INF("LDOPLL: PLLLDO_PD=%d", PM_LDOPLL->PLLLDO_PD);
 	LOG_INF("========================================");
 #else
-	LOG_INF("===== PM Register Dump: %s =====", prefix);
+	//LOG_INF("===== PM Register Dump: %s =====", prefix);
 #endif
 }
 
@@ -393,7 +393,7 @@ static inline void pm_watchdog_disable_pdsw1(void)
 	/* Lock watchdog register to prevent accidental modification */
 	WDOGLOCK = 0;
 
-	LOG_INF("[WATCHDOG] Disabled for deep sleep entry");
+	//LOG_INF("[WATCHDOG] Disabled for deep sleep entry");
 }
 
 /**
@@ -413,7 +413,7 @@ static inline void pm_watchdog_enable_pdsw1(void)
 	/* Lock watchdog register */
 	WDOGLOCK = 0;
 
-	LOG_INF("[WATCHDOG] Re-enabled after deep sleep wakeup");
+	//LOG_INF("[WATCHDOG] Re-enabled after deep sleep wakeup");
 }
 
 /**
@@ -1873,21 +1873,21 @@ void pm_state_set(enum pm_state state, uint8_t substate_id)
 	switch (state) {
 	case PM_STATE_SUSPEND_TO_IDLE:
 		pm_log_registers("BEFORE PDSW1 Entry");
-		dump_peripheral_regs(PM_DUMP_BEFORE);
+		//dump_peripheral_regs(PM_DUMP_BEFORE);
 
 		/* Disable watchdog before entering WFI to prevent timeout during sleep */
 		pm_watchdog_disable_pdsw1();
 
 		pm_log_registers("BEFORE PDSW1 setting");
 #if PDSW1_AB_TEST_PLAIN_WFI
-		LOG_INF("PDSW1 A/B TEST: plain WFI without power switch or clock changes");
-		uint32_t old_primask = __get_PRIMASK();
+		//LOG_INF("PDSW1 A/B TEST: plain WFI without power switch or clock changes");
+		//uint32_t old_primask = __get_PRIMASK();
 		uint32_t old_basepri;
 		__asm volatile ("mrs %0, basepri" : "=r" (old_basepri));
-		LOG_INF("Old BASEPRI: 0x%02X, PRIMASK: 0x%02X", old_basepri, old_primask);
+		//LOG_INF("Old BASEPRI: 0x%02X, PRIMASK: 0x%02X", old_basepri, old_primask);
 
 		//SCB->SCR &= ~SCB_SCR_SEVONPEND_Msk;
-		SCB->SCR |= SCB_SCR_SLEEPDEEP_Msk; /* Deep sleep, not Normal deep */
+		/*SCB->SCR |= SCB_SCR_SLEEPDEEP_Msk;*/ /* Deep sleep, not Normal deep */
 		/* pm_state_set() runs from the idle thread with interrupts locked
 		 * via BASEPRI. On ARMv7-M (Cortex-M4) a BASEPRI-masked interrupt
 		 * cannot generate a WFI wake-up event, so a raw __WFI() would never
@@ -1896,15 +1896,15 @@ void pm_state_set(enum pm_state state, uint8_t substate_id)
 		 * then re-enable so the pending ISR is serviced.
 		 */
 
-		uint32_t systick_ctrl = SysTick->CTRL;
+		//uint32_t systick_ctrl = SysTick->CTRL;
 
 		/* For case1 power measurement, fully pause SysTick while sleeping.
 		 * Masking TICKINT alone still leaves the counter running. */
-		SysTick->CTRL &= ~(SysTick_CTRL_TICKINT_Msk | SysTick_CTRL_ENABLE_Msk);
+		//SysTick->CTRL &= ~(SysTick_CTRL_TICKINT_Msk | SysTick_CTRL_ENABLE_Msk);
 		/* Clear stale system pending state before first WFI. If PENDSTSET
 		 * or PENDSVSET is already latched, WFI may return immediately. */
 		SCB->ICSR = SCB_ICSR_PENDSTCLR_Msk | SCB_ICSR_PENDSVCLR_Msk;
-		lp_auto_checklist();
+		//lp_auto_checklist();
 
 		/* Keep PRIMASK asserted while checking wake source so non-USB
 		 * interrupts do not force a full PM exit/re-entry cycle. */
@@ -1921,15 +1921,15 @@ void pm_state_set(enum pm_state state, uint8_t substate_id)
 		__ISB();
 
 		/* Restore the SysTick interrupt-enable state. */
-		SysTick->CTRL = systick_ctrl;
+		//SysTick->CTRL = systick_ctrl;
 		pm_log_registers("AFTER PDSW1 plain-WFI (A/B test)");
 #else
 		uint32_t old_primask = __get_PRIMASK();
 		uint32_t old_basepri;
 		__asm volatile ("mrs %0, basepri" : "=r" (old_basepri));
-		LOG_INF("Old BASEPRI: 0x%02X, PRIMASK: 0x%02X", old_basepri, old_primask);
+		//LOG_INF("Old BASEPRI: 0x%02X, PRIMASK: 0x%02X", old_basepri, old_primask);
 		uint32_t usb_prio = NVIC_GetPriority(6);
-		LOG_INF("USB IRQ priority: %d", usb_prio);
+		//LOG_INF("USB IRQ priority: %d", usb_prio);
 		pm_external_flash_power_control();
 		pm_led_pa3_output_high();
 		SCB->SCR &= ~SCB_SCR_SLEEPDEEP_Msk; /* Normal sleep, not deep */
@@ -2040,7 +2040,7 @@ void pm_state_set(enum pm_state state, uint8_t substate_id)
 		/* Re-enable watchdog after waking from sleep */
 		pm_watchdog_enable_pdsw1();
 
-		LOG_INF("[PDSW1_RESUME] System fully restored to active mode");
+		//LOG_INF("[PDSW1_RESUME] System fully restored to active mode");
 		break;
 
 	case PM_STATE_STANDBY:
