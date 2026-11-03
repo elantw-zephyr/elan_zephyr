@@ -4,6 +4,7 @@
 config ENTROPY_EM32_TRNG
     bool "Elan EM32F967 TRNG"
     depends on SOC_EM32F967
+    select ENTROPY_HAS_DRIVER
     default y
     help
       Enable the EM32F967 on-chip True Random Number Generator driver.
